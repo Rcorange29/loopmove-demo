@@ -728,6 +728,11 @@ document.getElementById('photoInput').onchange=e=>{
   let timer=setTimeout(()=>{step.textContent='AI 正在看图识别物品…';bar.style.width='55%';},2500);
   setTimeout(()=>{step.textContent='正在整理物品清单…';bar.style.width='85%';},15000);
   let ok=false;
+  if(IS_STATIC){
+   clearTimeout(timer); mask.classList.remove('show');
+   bAlert('网页演示版没有 AI 识别服务（拍照识别只在本地版可用）。请点"先用示例房间"看完整演示。');
+   return;
+  }
   for(let attempt=1;attempt<=2&&!ok;attempt++){
    try{
     const res=await fetch('/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:ev.target.result})});
@@ -968,14 +973,15 @@ document.getElementById('autoSplit').onclick=()=>{
   };
  }
  typeText(tEl, aiWhyText());
- /* 异步调模型生成更详细的解释，失败不影响本地文案 */
- fetch('/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dest:S.dest||'',purpose:p,items:sorted.map(i=>({name:i.name,vol:i.vol,kind:i.kind}))})})
+ /* 异步调模型生成更详细的解释，失败不影响本地文案（静态版跳过） */
+ if(!IS_STATIC) fetch('/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dest:S.dest||'',purpose:p,items:sorted.map(i=>({name:i.name,vol:i.vol,kind:i.kind}))})})
   .then(r=>r.json()).then(j=>{if(j.text)typeText(tEl,j.text);})
   .catch(()=>{});
 };
 /* AI 生成搬家说明 */
 document.getElementById('genPlan').onclick=async e=>{ const box=document.getElementById('aiPlan');
  box.innerHTML='<span class="ai-loading">AI 正在写搬家说明…</span>';
+ if(IS_STATIC){ typeText(box,'网页演示版暂不提供 AI 说明（本地版可用）。计划已按本地规则生成，功能不受影响。'); return; }
  try{
   const res=await fetch('/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
    dest:S.dest||'', items:S.items.filter(i=>i.bucket!=='trash').map(i=>({name:i.name,vol:i.vol,kind:i.kind,ch:i.ch}))
@@ -1090,6 +1096,8 @@ function suggestChannel(it){
  if(/书|纸|零碎/.test(k))return{ch:'绿在区区',why:'纸类/零碎就近回收'};
  return{ch:'绿在区区',why:'一般可回收物'};
 }
+/* 静态托管环境探测（公网版无后端 API，跳过请求走降级） */
+const IS_STATIC=location.protocol==='https:'&&!['localhost','127.0.0.1'].includes(location.hostname);
 /* ---------- item editor ---------- */
 let ieCurrent=null;
 function openEditor(it){

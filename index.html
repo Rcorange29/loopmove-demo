@@ -405,7 +405,33 @@ body.lowvision .anno span,body.lowvision #fab .tip{background:#000!important;col
   .cta-row{display:flex;flex-direction:column;gap:10px;align-items:stretch;}
   .cta-row .primary{width:100%;margin:0;}
 }
-@media print{#fab,.topbar,.row button,.no-print{display:none!important;}.screen{display:block!important;}}
+.days-wrap{display:grid;grid-template-columns:minmax(0,1fr) 390px;gap:18px;align-items:start;margin:16px 0 4px;}
+.map-card{border:3px solid var(--line);background:var(--surface);box-shadow:var(--shadow);padding:14px;display:flex;flex-direction:column;gap:10px;}
+.map-card .mc-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;}
+.map-card .mc-head b{font-size:17px;}
+.map-card .mc-head small{font-size:11px;color:var(--muted);}
+.map-box{width:100%;height:300px;border:2px solid var(--line);background:#e8e6dd;overflow:hidden;touch-action:manipulation;}
+.map-box .leaflet-container{background:#e8e6dd;font-family:inherit;}
+.map-legend{display:flex;flex-wrap:wrap;gap:8px;}
+.map-legend .lg{display:inline-flex;align-items:center;gap:6px;border:2px solid var(--line);background:var(--paper);padding:3px 8px;font-size:11px;font-weight:800;box-shadow:2px 2px 0 var(--line);}
+.map-legend .lg i{width:14px;height:14px;border:2px solid #000;border-radius:50%;display:inline-block;}
+.mc-hint{margin:0;font-size:11px;color:var(--muted);}
+.lm-pin{width:34px;height:34px;border:3px solid var(--line);border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:3px 3px 0 rgba(20,20,20,.25);cursor:pointer;}
+.lm-pin:hover{transform:scale(1.12);}
+body.lowvision .lm-pin{border-color:#ff0;background:#000;}
+body.lowvision .map-box .leaflet-container{background:#000;}
+body.eld .map-card .mc-head b{font-size:22px;}
+body.eld .map-legend .lg{font-size:14px;}
+@media(max-width:820px){
+  .days-wrap{grid-template-columns:1fr;}
+  .map-card{order:2;}
+  .map-box{height:250px;}
+}
+@media(max-width:520px){
+  .map-box{height:220px;}
+  .map-card{padding:10px;}
+}
+@media print{#fab,.topbar,.row button,.no-print{display:none!important;}.screen{display:block!important;}.map-card{display:none!important;}}
 </style>
 </head>
 <body>
@@ -492,7 +518,15 @@ body.lowvision .anno span,body.lowvision #fab .tip{background:#000!important;col
     <p class="eyebrow" data-i18n="s3eyebrow">Step 3 · 按紧急程度分天</p>
     <h1><span data-i18n="s3h1a">哪些</span><em data-i18n="s3h1b">当天就要用？</em></h1>
     <p class="lead" data-i18n="s3lead">把卡片拖到对应天。Day1 马上要用，后面几天按趟数排，越往后越不急。不要的丢进垃圾桶。</p>
-    <div class="board" id="board"></div>
+    <div class="days-wrap">
+      <div class="board" id="board"></div>
+      <div class="map-card" id="mapCard">
+        <div class="mc-head"><b data-i18n="mapTitle">🗺 目的地周边</b><small class="mono" id="mapDest"></small></div>
+        <div id="mapBox" class="map-box" role="region" aria-label="周边设施地图"></div>
+        <div class="map-legend" id="mapLegend"></div>
+        <p class="mc-hint" data-i18n="mapHint">点击标记查看设施详情</p>
+      </div>
+    </div>
     <div id="eldBar" role="group" aria-label="选择要放到第几天"></div>
     <div id="aiWhy" style="display:none">
       <div class="aw-t" style="display:flex;justify-content:space-between;align-items:center;"><span data-i18n="s3why">🤖 AI 为什么这么分</span><button class="ghost" id="speakWhy" style="padding:4px 10px;font-size:12px" data-i18n="s3read">🔊 朗读</button></div>
@@ -726,12 +760,116 @@ function go(n){
  if(document.body.classList.contains('lowvision')){
   speak(TF('gstepT',{n:n})+T('gstep'+n)+'。'+T('gtip'+n));
  }
- if(n===3){renderBoard();if(S.aiMode==='ai')document.getElementById('autoSplit').click();}
+ if(n===3){renderBoard();ensureMap();if(S.aiMode==='ai')document.getElementById('autoSplit').click();}
  if(n===4){renderModal();}
  if(n===5){renderPlan();}
  document.getElementById('trashZone').classList.toggle('show',n===3);
 }
 
+/* ---------- 目的地周边地图（Leaflet/OSM，无需 API key） ---------- */
+/* 数据接口：与 Google Maps 接入点完全对齐，后续可替换为真实 API 返回 */
+const MAP_CATS={
+ furniture:{icon:'🛋',color:'#1c5a3c',k:'mapCatFur',d:'mapFurDesc'},
+ mall:{icon:'🛍',color:'#1e3a8a',k:'mapCatMall',d:'mapMallDesc'},
+ market:{icon:'🥬',color:'#c98a1e',k:'mapCatMar',d:'mapMarDesc'},
+ toys:{icon:'🧸',color:'#7c3aed',k:'mapCatToy',d:'mapToyDesc'},
+ convenience:{icon:'🏪',color:'#b3261e',k:'mapCatConv',d:'mapConvDesc'}
+};
+/* 示例数据：{ destinationName, center, facilities } —— 字段对应 Facility / DayLocationConfig */
+const DAY_LOCS={
+ hsk:{destinationName:{en:'Hung Shui Kiu / Ha Tsuen NDA',hant:'洪水橋／厦村新發展區',hans:'洪水桥／厦村新发展区'},center:{lat:22.5029,lng:113.9458},
+  facilities:[
+   {id:'hsk1',name:{en:'T Town',hant:'T Town 天頌商場',hans:'T Town 天颂商场'},cat:'mall',lat:22.4518,lng:114.0036,addr:{en:'18 Tin Yan Rd, Tin Shui Wai',hant:'天水圍天恩路18號',hans:'天水围天恩路18号'}},
+   {id:'hsk2',name:{en:'Fortune Kingswood',hant:'置富嘉湖（嘉湖銀座）',hans:'置富嘉湖（嘉湖银座）'},cat:'mall',lat:22.4589,lng:114.0032,addr:{en:'12-18 Tin Yan Rd, Tin Shui Wai',hant:'天水圍天恩路12-18號',hans:'天水围天恩路12-18号'}},
+   {id:'hsk3',name:{en:'Tin Shui Wai Market',hant:'天水圍街市',hans:'天水围街市'},cat:'market',lat:22.4554,lng:114.0021,addr:{en:'Tin Shui Road, Tin Shui Wai',hant:'天水圍天瑞路',hans:'天水围天瑞路'}},
+   {id:'hsk4',name:{en:'Hung Shui Kiu Market',hant:'洪水橋街市',hans:'洪水桥街市'},cat:'market',lat:22.4695,lng:113.9943,addr:{en:'Hung Shing Road, Hung Shui Kiu',hant:'洪水橋洪元路',hans:'洪水桥洪元路'}},
+   {id:'hsk5',name:{en:'Pricerite (Yuen Long)',hant:'實惠（元朗）',hans:'实惠（元朗）'},cat:'furniture',lat:22.4427,lng:114.0229,addr:{en:'11 Tai Tong Rd, Yuen Long',hant:'元朗大棠路11號光華廣場',hans:'元朗大棠路11号光华广场'}},
+   {id:'hsk6',name:{en:'Mannings (Tin Shui Wai)',hant:'萬寧（天水圍）',hans:'万宁（天水围）'},cat:'convenience',lat:22.4525,lng:114.0035,addr:{en:'Tin Shui Road, Tin Shui Wai',hant:'天水圍天瑞邨商場',hans:'天水围天瑞邨商场'}},
+   {id:'hsk7',name:{en:'7-Eleven (Hung Fuk Estate)',hant:'7-11（洪福邨）',hans:'7-11（洪福邨）'},cat:'convenience',lat:22.4680,lng:113.9950,addr:{en:'Hung Fuk Estate, Hung Shui Kiu',hant:'洪水橋洪福邨',hans:'洪水桥洪福邨'}},
+   {id:'hsk8',name:{en:'T Town Toy & Stationery',hant:'T Town 玩具文具店',hans:'T Town 玩具文具店'},cat:'toys',lat:22.4518,lng:114.0034,addr:{en:'T Town L3, Tin Shui Wai',hant:'天水圍T Town 3樓',hans:'天水围T Town 3楼'}}
+  ]},
+ syl:{destinationName:{en:'Yuen Long South',hant:'元朗南',hans:'元朗南'},center:{lat:22.4440,lng:114.0330},
+  facilities:[
+   {id:'syl1',name:{en:'YOHO MALL I',hant:'YOHO MALL I 元朗',hans:'YOHO MALL I 元朗'},cat:'mall',lat:22.4430,lng:114.0345,addr:{en:'9 Long Yat Rd, Yuen Long',hant:'元朗朗日路9號',hans:'元朗朗日路9号'}},
+   {id:'syl2',name:{en:'Citistore (Yuen Long)',hant:'千色匯（元朗）',hans:'千色汇（元朗）'},cat:'mall',lat:22.4423,lng:114.0327,addr:{en:'1 Kau Yuk Rd, Yuen Long',hant:'元朗教育路1號',hans:'元朗教育路1号'}},
+   {id:'syl3',name:{en:'Yuen Long Market',hant:'元朗街市',hans:'元朗街市'},cat:'market',lat:22.4451,lng:114.0271,addr:{en:'Kiu Lok Square, Yuen Long',hant:'元朗橋樂坊',hans:'元朗桥乐坊'}},
+   {id:'syl4',name:{en:'Pricerite (Yuen Long)',hant:'實惠（元朗）',hans:'实惠（元朗）'},cat:'furniture',lat:22.4427,lng:114.0229,addr:{en:'11 Tai Tong Rd, Yuen Long',hant:'元朗大棠路11號',hans:'元朗大棠路11号'}},
+   {id:'syl5',name:{en:'YOHO Toy Shop',hant:'YOHO 玩具店',hans:'YOHO 玩具店'},cat:'toys',lat:22.4433,lng:114.0343,addr:{en:'YOHO MALL, Yuen Long',hant:'元朗YOHO MALL',hans:'元朗YOHO MALL'}},
+   {id:'syl6',name:{en:'Mannings (Yuen Long Plaza)',hant:'萬寧（元朗廣場）',hans:'万宁（元朗广场）'},cat:'convenience',lat:22.4431,lng:114.0346,addr:{en:'Yuen Long Plaza, Yuen Long',hant:'元朗元朗廣場',hans:'元朗元朗广场'}},
+   {id:'syl7',name:{en:'7-Eleven (Yuen Long)',hant:'7-11（元朗）',hans:'7-11（元朗）'},cat:'convenience',lat:22.4445,lng:114.0285,addr:{en:'Tai Tong Rd, Yuen Long',hant:'元朗大棠路',hans:'元朗大棠路'}}
+  ]},
+ ktn:{destinationName:{en:'Kwu Tung North / Fanling North NDA',hant:'古洞北／粉嶺北新發展區',hans:'古洞北／粉岭北新发展区'},center:{lat:22.5075,lng:114.1200},
+  facilities:[
+   {id:'ktn1',name:{en:'Landmark North (Sheung Shui)',hant:'上水廣場',hans:'上水广场'},cat:'mall',lat:22.5016,lng:114.1273,addr:{en:'39 Lung Sum Ave, Sheung Shui',hant:'上水龍琛路39號',hans:'上水龙琛路39号'}},
+   {id:'ktn2',name:{en:'Sheung Shui Centre',hant:'上水中心',hans:'上水中心'},cat:'mall',lat:22.5022,lng:114.1260,addr:{en:'3 Chi Cheong Rd, Sheung Shui',hant:'上水智昌路3號',hans:'上水智昌路3号'}},
+   {id:'ktn3',name:{en:'Luen Wo Hui Market',hant:'聯和墟街市',hans:'联和墟街市'},cat:'market',lat:22.4990,lng:114.1400,addr:{en:'Wo Ming St, Fanling',hant:'粉嶺聯和墟和滿街',hans:'粉岭联和墟和满街'}},
+   {id:'ktn4',name:{en:'Sheung Shui Market',hant:'上水街市',hans:'上水街市'},cat:'market',lat:22.5010,lng:114.1285,addr:{en:'Sun Hong St, Sheung Shui',hant:'上水新康街',hans:'上水新康街'}},
+   {id:'ktn5',name:{en:'Pricerite (Landmark North)',hant:'實惠（上水廣場）',hans:'实惠（上水广场）'},cat:'furniture',lat:22.5018,lng:114.1270,addr:{en:'Landmark North, Sheung Shui',hant:'上水廣場',hans:'上水广场'}},
+   {id:'ktn6',name:{en:'Toy Shop (Landmark North)',hant:'玩具店（上水廣場）',hans:'玩具店（上水广场）'},cat:'toys',lat:22.5017,lng:114.1272,addr:{en:'Landmark North, Sheung Shui',hant:'上水廣場',hans:'上水广场'}},
+   {id:'ktn7',name:{en:'Mannings (Sheung Shui)',hant:'萬寧（上水）',hans:'万宁（上水）'},cat:'convenience',lat:22.5012,lng:114.1275,addr:{en:'San Fung Ave, Sheung Shui',hant:'上水新豐路',hans:'上水新丰路'}},
+   {id:'ktn8',name:{en:'7-Eleven (Sheung Shui)',hant:'7-11（上水）',hans:'7-11（上水）'},cat:'convenience',lat:22.5008,lng:114.1280,addr:{en:'Sun Hong St, Sheung Shui',hant:'上水新康街',hans:'上水新康街'}}
+  ]},
+ stt:{destinationName:{en:'San Tin Tech City / Lok Ma Chau Hub',hant:'新田科技城／落馬洲樞紐',hans:'新田科技城／落马洲枢纽'},center:{lat:22.5106,lng:114.0687},
+  facilities:[
+   {id:'stt1',name:{en:'Lok Ma Chau Station Store',hant:'落馬洲站便利店',hans:'落马洲站便利店'},cat:'convenience',lat:22.5110,lng:114.0640,addr:{en:'Lok Ma Chau Station',hant:'落馬洲站',hans:'落马洲站'}},
+   {id:'stt2',name:{en:'7-Eleven (San Tin)',hant:'7-11（新田）',hans:'7-11（新田）'},cat:'convenience',lat:22.5190,lng:114.0720,addr:{en:'San Tin Village, San Tin',hant:'新田村',hans:'新田村'}},
+   {id:'stt3',name:{en:'Mai Po Grocery',hant:'米埔雜貨店',hans:'米埔杂货店'},cat:'market',lat:22.5150,lng:114.0620,addr:{en:'Mai Po, San Tin',hant:'米埔',hans:'米埔'}},
+   {id:'stt4',name:{en:'Landmark North (nearest big mall)',hant:'上水廣場（就近大型商場）',hans:'上水广场（就近大型商场）'},cat:'mall',lat:22.5016,lng:114.1273,addr:{en:'39 Lung Sum Ave, Sheung Shui',hant:'上水龍琛路39號',hans:'上水龙琛路39号'}},
+   {id:'stt5',name:{en:'Sheung Shui Market (nearest)',hant:'上水街市（就近）',hans:'上水街市（就近）'},cat:'market',lat:22.5010,lng:114.1285,addr:{en:'Sun Hong St, Sheung Shui',hant:'上水新康街',hans:'上水新康街'}},
+   {id:'stt6',name:{en:'Pricerite (Landmark North)',hant:'實惠（上水廣場）',hans:'实惠（上水广场）'},cat:'furniture',lat:22.5018,lng:114.1270,addr:{en:'Landmark North, Sheung Shui',hant:'上水廣場',hans:'上水广场'}}
+  ]}
+};
+let _map=null,_layer=null;
+function t3(o){return LANG==='en'?(o.en||o.hans||''):(LANG==='zhHant'?(o.hant||o.hans||''):(o.hans||o.hant||''));}
+function loadLeaflet(cb){
+ if(window.L){cb();return;}
+ const c=document.createElement('link');c.rel='stylesheet';c.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(c);
+ const s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';s.onload=cb;s.onerror=()=>{const b=document.getElementById('mapBox');if(b)b.innerHTML='<div style="padding:40px;text-align:center;font-weight:800;color:var(--muted)">'+T('mapFail')+'</div>';};
+ document.head.appendChild(s);
+}
+function renderLegend(){
+ const lg=document.getElementById('mapLegend');lg.innerHTML='';
+ Object.keys(MAP_CATS).forEach(k=>{
+  const c=MAP_CATS[k];
+  lg.innerHTML+='<span class="lg"><i style="background:'+c.color+'"></i>'+c.icon+' '+T(c.k)+'</span>';
+ });
+}
+function popupHtml(f,c){
+ return '<div style="font-size:13px;line-height:1.6;min-width:180px">'
+  +'<b style="font-size:15px">'+esc(t3(f.name))+'</b><br>'
+  +'<span style="display:inline-block;margin:4px 0;font-weight:800;color:'+c.color+'">'+c.icon+' '+T(c.k)+'</span>'
+  +'<br><span style="color:var(--muted)">'+esc(t3(f.addr))+ '</span><br>'
+  +'<span>'+T(c.d)+'</span>'
+  +'</div>';
+}
+function renderMap(){
+ const cfg=DAY_LOCS[S.dest?S.dest.id:'hsk']||DAY_LOCS.hsk;
+ const dm=document.getElementById('mapDest');if(dm)dm.textContent=t3(cfg.destinationName);
+ if(!_map)return;
+ if(_layer){_layer.remove();_layer=null;}
+ _layer=L.layerGroup().addTo(_map);
+ const pts=cfg.facilities.map(f=>{
+  const c=MAP_CATS[f.cat]||MAP_CATS.convenience;
+  const ic=L.divIcon({className:'',html:'<div class="lm-pin" style="border-color:'+c.color+'" title="'+esc(t3(f.name))+'">'+c.icon+'</div>',iconSize:[34,34],iconAnchor:[17,17],popupAnchor:[0,-16]});
+  const m=L.marker([f.lat,f.lng],{icon:ic}).addTo(_layer);
+  m.bindPopup(popupHtml(f,c),{maxWidth:260});
+  return [f.lat,f.lng];
+ });
+ if(pts.length>1){try{_map.fitBounds(L.latLngBounds(pts).pad(0.18));}catch(e){_map.setView(cfg.center,12);}}
+ else _map.setView(pts[0]||cfg.center,13);
+ renderLegend();
+}
+function ensureMap(){
+ const b=document.getElementById('mapBox');if(!b)return;
+ if(!_map){
+  b.innerHTML='<div style="padding:30px;text-align:center;font-weight:800;color:var(--muted)">'+T('mapLoad')+'…</div>';
+  loadLeaflet(()=>{
+   _map=L.map('mapBox',{scrollWheelZoom:false}).setView(DAY_LOCS[S.dest?S.dest.id:'hsk'].center,12);
+   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19}).addTo(_map);
+   renderMap();
+  });
+ }else{renderMap();}
+}
 /* ---------- screen 1 ---------- */
 function buildDest(){
  const dg=document.getElementById('destGrid');dg.innerHTML='';
@@ -888,6 +1026,9 @@ en:{
  s1h1a:'Moving to the Northern Metropolis,',s1h1b:'where do we start?',
  s1lead:'Pick an area first, then a short survey — you set the number of trips, and I spread your things across every day and trip, then show you the cost.',
  accStd:'Standard',accEld:'Elder',accLv:'Low vision',recTitle2:'AI Recognition Results (tap a box to edit)',
+mapTitle:'🗺 Around your destination',mapHint:'Tap a pin for details',mapDestLb:'Destination map',
+mapCatFur:'Furniture stores',mapCatMall:'Shopping malls',mapCatMar:'Markets / groceries',mapCatToy:'Toy & stationery',mapCatConv:'Convenience / pharmacy',
+mapFurDesc:'Buy beds, desks and large items here.',mapMallDesc:'One-stop daily essentials.',mapMarDesc:'Fresh food and daily goods.',mapToyDesc:'Toys and stationery for the kids.',mapConvDesc:'Snacks, meds, toiletries — quick top-up.',
  sb01:'Wall art',sb02:'Bed frame',sb03:'White pillow',sb04:'Green cushion',sb05:'Quilt',sb06:'Left curtain',sb07:'Right curtain',sb08:'Curtain rod',sb09:'Window',sb10:'Suitcase',sb11:'Desk',sb12:'Laptop',sb13:'Office chair',sb14:'Wall shelf',sb15:'Books',sb16:'Shelf pothos',sb17:'Floor plant',sb18:'Rug',sb19:'Curtain tie',
  s1f1:'Move-in date',s1f2:'Trips (you decide, I plan around it)',s1tripsHint:'Volume is balanced evenly across this many trips',
  s1cta:'Start organising my things →',
@@ -974,6 +1115,9 @@ zhHant:{
  s1h1a:'搬到香港北部，',s1h1b:'先定哪裡。',
  s1lead:'選一個你想去的片區。選完填個小問卷——搬幾趟由你定，後面我幫你把東西分到每一天、每一趟，再算一筆賬。',
  accStd:'標準版',accEld:'長者版',accLv:'視障版',recTitle2:'AI 識別結果（點框可改）',
+mapTitle:'🗺 目的地周邊',mapHint:'點擊標記看詳情',mapDestLb:'目的地地圖',
+mapCatFur:'傢俬店',mapCatMall:'商場',mapCatMar:'街市/雜貨',mapCatToy:'玩具/文具',mapCatConv:'便利店/藥房',
+mapFurDesc:'可買床架、書桌等大件。',mapMallDesc:'一站式補足日用品。',mapMarDesc:'新鮮食材和日常雜貨。',mapToyDesc:'玩具文具，小朋友開心。',mapConvDesc:'零食、藥品、洗漱，應急補給。',
  sb01:'裝飾畫',sb02:'床架',sb03:'白枕頭',sb04:'綠抱枕',sb05:'棉被',sb06:'左窗簾',sb07:'右窗簾',sb08:'窗簾桿',sb09:'窗戶',sb10:'行李箱',sb11:'書桌',sb12:'筆記型電腦',sb13:'辦公椅',sb14:'牆上擱板',sb15:'書籍',sb16:'擱板綠蘿',sb17:'落地綠植',sb18:'地毯',sb19:'窗簾綁帶',
  s1f1:'預計入住時間',s1f2:'搬幾趟（你定，我按這個排）',s1tripsHint:'填幾趟，最終計劃就按幾趟均衡分配體積',
  s1cta:'開始整理我的物品 →',
@@ -1060,6 +1204,9 @@ zhHans:{
  s1h1a:'搬到香港北部，',s1h1b:'先定哪里。',
  s1lead:'选一个你想去的片区。选完填个小问卷——搬几趟由你定，后面我帮你把东西分到每一天、每一趟，再算一笔账。',
  accStd:'标准版',accEld:'老年版',accLv:'视障版',recTitle2:'AI 识别结果（点框可改）',
+mapTitle:'🗺 目的地周边',mapHint:'点击标记看详情',mapDestLb:'目的地地图',
+mapCatFur:'家具店',mapCatMall:'商场',mapCatMar:'街市/杂货',mapCatToy:'玩具/文具',mapCatConv:'便利店/药店',
+mapFurDesc:'可买床架、书桌等大件。',mapMallDesc:'一站式补足日用品。',mapMarDesc:'新鲜食材和日常杂货。',mapToyDesc:'玩具文具，小朋友开心。',mapConvDesc:'零食、药品、洗漱，应急补给。',
  sb01:'装饰画',sb02:'床架',sb03:'白枕头',sb04:'绿抱枕',sb05:'被子',sb06:'左窗帘',sb07:'右窗帘',sb08:'窗帘杆',sb09:'窗户',sb10:'行李箱',sb11:'书桌',sb12:'笔记本',sb13:'办公椅',sb14:'墙上搁板',sb15:'书籍',sb16:'搁板绿萝',sb17:'落地绿植',sb18:'地毯',sb19:'窗帘绑带',
  s1f1:'预计入住时间',s1f2:'搬几趟（你定，我按这个排）',s1tripsHint:'填几趟，最终计划就按几趟均衡分配体积',
  s1cta:'开始整理我的物品 →',
@@ -1159,6 +1306,7 @@ function applyLang(){
  S.items.forEach(i=>{if(i._key){const s0=SEED.find(x=>x.name===i._key);if(s0)i.name=LANG==='en'?(s0.en||i._key):(LANG==='zhHant'?(s0.hant||i._key):i._key);}});
 }
 function rerenderAll(){
+ if(_map)renderMap();
  buildDest();buildGoals();
  const on=document.querySelector('.screen.on').id;
  if(on==='s2')renderItems();

@@ -819,12 +819,14 @@ const DAY_LOCS={
    {id:'stt6',name:{en:'Pricerite (Landmark North)',hant:'實惠（上水廣場）',hans:'实惠（上水广场）'},cat:'furniture',lat:22.5018,lng:114.1270,addr:{en:'Landmark North, Sheung Shui',hant:'上水廣場',hans:'上水广场'}}
   ]}
 };
-let _map=null,_layer=null;
+let _map=null,_layer=null,_mv=null,_tiles=null;
+const TILE_OSM=()=>L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19});
+const TILE_ESRI=()=>L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri · World Street Map',maxZoom:18});
 function t3(o){return LANG==='en'?(o.en||o.hans||''):(LANG==='zhHant'?(o.hant||o.hans||''):(o.hans||o.hant||''));}
 function loadLeaflet(cb){
  if(window.L){cb();return;}
- const c=document.createElement('link');c.rel='stylesheet';c.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';document.head.appendChild(c);
- const s=document.createElement('script');s.src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';s.onload=cb;s.onerror=()=>{const b=document.getElementById('mapBox');if(b)b.innerHTML='<div style="padding:40px;text-align:center;font-weight:800;color:var(--muted)">'+T('mapFail')+'</div>';};
+ const c=document.createElement('link');c.rel='stylesheet';c.href='assets/leaflet/leaflet.css';document.head.appendChild(c);
+ const s=document.createElement('script');s.src='assets/leaflet/leaflet.js';s.onload=cb;s.onerror=()=>{const b=document.getElementById('mapBox');if(b)b.innerHTML='<div style="padding:40px;text-align:center;font-weight:800;color:var(--muted)">'+T('mapFail')+'</div>';};
  document.head.appendChild(s);
 }
 function renderLegend(){
@@ -846,6 +848,9 @@ function renderMap(){
  const cfg=DAY_LOCS[S.dest?S.dest.id:'hsk']||DAY_LOCS.hsk;
  const dm=document.getElementById('mapDest');if(dm)dm.textContent=t3(cfg.destinationName);
  if(!_map)return;
+ const first=_mv===null;
+ if(!first&&_mv){_map.setView(_mv.c,_mv.z,{animate:false});}
+ else{_mv={c:_map.getCenter(),z:_map.getZoom()};}
  if(_layer){_layer.remove();_layer=null;}
  _layer=L.layerGroup().addTo(_map);
  const pts=cfg.facilities.map(f=>{
@@ -855,8 +860,9 @@ function renderMap(){
   m.bindPopup(popupHtml(f,c),{maxWidth:260});
   return [f.lat,f.lng];
  });
- if(pts.length>1){try{_map.fitBounds(L.latLngBounds(pts).pad(0.18));}catch(e){_map.setView(cfg.center,12);}}
- else _map.setView(pts[0]||cfg.center,13);
+ if(first){if(pts.length>1){try{_map.fitBounds(L.latLngBounds(pts).pad(0.18));}catch(e){_map.setView(cfg.center,12);}}
+  else _map.setView(pts[0]||cfg.center,13);}
+ _mv={c:_map.getCenter(),z:_map.getZoom()};
  renderLegend();
 }
 function ensureMap(){
@@ -865,7 +871,9 @@ function ensureMap(){
   b.innerHTML='<div style="padding:30px;text-align:center;font-weight:800;color:var(--muted)">'+T('mapLoad')+'…</div>';
   loadLeaflet(()=>{
    _map=L.map('mapBox',{scrollWheelZoom:false}).setView(DAY_LOCS[S.dest?S.dest.id:'hsk'].center,12);
-   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19}).addTo(_map);
+   _tiles=TILE_OSM().addTo(_map);
+   let fail=0;
+   _tiles.on('tileerror',()=>{if(++fail>=4&&_tiles&&_map){_map.removeLayer(_tiles);_tiles=TILE_ESRI().addTo(_map);}});
    renderMap();
   });
  }else{renderMap();}

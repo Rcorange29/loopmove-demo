@@ -865,18 +865,70 @@ function renderMap(){
  _mv={c:_map.getCenter(),z:_map.getZoom()};
  renderLegend();
 }
+/* Google Maps 优先（香港直连快），失败/超时自动降级 Leaflet+OSM */
+const GM_KEY='AIzaSyD5qcKPPz1MHQSCV2kKWZXPyP-UwJ6yFtw';
+let _gmap=null,_gmarkers=[],_ginfo=null,_gmv=null,_mapMode=null;
+function gmapStyle(){return [
+ {elementType:'geometry',stylers:[{color:'#f2f1ea'}]},
+ {elementType:'labels.text.fill',stylers:[{color:'#5c5c55'}]},
+ {elementType:'labels.text.stroke',stylers:[{color:'#f2f1ea'}]},
+ {featureType:'road',elementType:'geometry',stylers:[{color:'#ffffff'}]},
+ {featureType:'road',elementType:'labels.text.fill',stylers:[{color:'#141414'}]},
+ {featureType:'water',elementType:'geometry',stylers:[{color:'#cfe3d6'}]},
+ {featureType:'poi',elementType:'geometry',stylers:[{color:'#e6e4d8'}]},
+ {featureType:'transit',elementType:'geometry',stylers:[{color:'#d8e9da'}]},
+ {featureType:'administrative',elementType:'geometry.stroke',stylers:[{color:'#141414'}]},
+ {featureType:'administrative',elementType:'labels.text.fill',stylers:[{color:'#5c5c55'}]}
+];}
+function gIcon(color,icon){
+ const svg='<svg xmlns="http://www.w3.org/2000/svg" width="38" height="38"><circle cx="19" cy="19" r="14" fill="#ffffff" stroke="'+color+'" stroke-width="3.5"/><text x="19" y="25" font-size="16" text-anchor="middle">'+icon+'</text></svg>';
+ return {url:'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg),scaledSize:new google.maps.Size(38,38),anchor:new google.maps.Point(19,19)};
+}
+function initGMap(cfg){
+ _gmap=new google.maps.Map(document.getElementById('mapBox'),{center:{lat:cfg.center.lat,lng:cfg.center.lng},zoom:12,scrollwheel:false,styles:gmapStyle(),mapTypeControl:false,fullscreenControl:false,streetViewControl:false});
+ _mapMode='gm';renderGMap();
+}
+function renderGMap(){
+ const cfg=DAY_LOCS[S.dest?S.dest.id:'hsk']||DAY_LOCS.hsk;
+ const dm=document.getElementById('mapDest');if(dm)dm.textContent=t3(cfg.destinationName);
+ if(!_gmap)return;
+ _gmarkers.forEach(m=>m.setMap(null));_gmarkers=[];
+ if(_ginfo)_ginfo.close();
+ const bounds=new google.maps.LatLngBounds();
+ cfg.facilities.forEach(f=>{
+  const c=MAP_CATS[f.cat]||MAP_CATS.convenience;
+  const m=new google.maps.Marker({position:{lat:f.lat,lng:f.lng},map:_gmap,icon:gIcon(c.color,c.icon),title:t3(f.name)});
+  m.addListener('click',()=>{if(_ginfo)_ginfo.close();_ginfo=new google.maps.InfoWindow({content:popupHtml(f,c),maxWidth:260});_ginfo.open({map:_gmap,anchor:m});});
+  _gmarkers.push(m);bounds.extend(m.getPosition());
+ });
+ if(_gmv){_gmap.setCenter(_gmv.c);_gmap.setZoom(_gmv.z);}else{try{_gmap.fitBounds(bounds,{top:24,right:24,bottom:24,left:24});}catch(e){_gmap.setCenter(cfg.center);_gmap.setZoom(12);}}
+ _gmv={c:_gmap.getCenter(),z:_gmap.getZoom()};
+ renderLegend();
+}
+function loadGMap(cb){
+ if(window.google&&window.google.maps){cb();return;}
+ let done=false;
+ const timer=setTimeout(()=>{if(!done){done=true;fallbackLeaflet();}},8000);
+ window.__gmInit=()=>{if(done)return;done=true;clearTimeout(timer);cb();};
+ const s=document.createElement('script');
+ s.src='https://maps.googleapis.com/maps/api/js?key='+GM_KEY+'&callback=__gmInit&v=weekly';
+ s.onerror=()=>{if(!done){done=true;clearTimeout(timer);fallbackLeaflet();}};
+ document.head.appendChild(s);
+}
+function initLeaflet(cfg){
+ _map=L.map('mapBox',{scrollWheelZoom:false}).setView(cfg.center,12);
+ _tiles=TILE_OSM().addTo(_map);
+ let fail=0;
+ _tiles.on('tileerror',()=>{if(++fail>=4&&_tiles&&_map){_map.removeLayer(_tiles);_tiles=TILE_ESRI().addTo(_map);}});
+ _mapMode='leaflet';renderMap();
+}
+function fallbackLeaflet(){loadLeaflet(()=>initLeaflet(DAY_LOCS[S.dest?S.dest.id:'hsk']||DAY_LOCS.hsk));}
 function ensureMap(){
  const b=document.getElementById('mapBox');if(!b)return;
- if(!_map){
-  b.innerHTML='<div style="padding:30px;text-align:center;font-weight:800;color:var(--muted)">'+T('mapLoad')+'…</div>';
-  loadLeaflet(()=>{
-   _map=L.map('mapBox',{scrollWheelZoom:false}).setView(DAY_LOCS[S.dest?S.dest.id:'hsk'].center,12);
-   _tiles=TILE_OSM().addTo(_map);
-   let fail=0;
-   _tiles.on('tileerror',()=>{if(++fail>=4&&_tiles&&_map){_map.removeLayer(_tiles);_tiles=TILE_ESRI().addTo(_map);}});
-   renderMap();
-  });
- }else{renderMap();}
+ if(_gmap){renderGMap();return;}
+ if(_map){renderMap();return;}
+ b.innerHTML='<div style="padding:30px;text-align:center;font-weight:800;color:var(--muted)">'+T('mapLoad')+'…</div>';
+ loadGMap(()=>initGMap(DAY_LOCS[S.dest?S.dest.id:'hsk']||DAY_LOCS.hsk));
 }
 /* ---------- screen 1 ---------- */
 function buildDest(){
@@ -1314,7 +1366,7 @@ function applyLang(){
  S.items.forEach(i=>{if(i._key){const s0=SEED.find(x=>x.name===i._key);if(s0)i.name=LANG==='en'?(s0.en||i._key):(LANG==='zhHant'?(s0.hant||i._key):i._key);}});
 }
 function rerenderAll(){
- if(_map)renderMap();
+ if(_gmap)renderGMap();else if(_map)renderMap();
  buildDest();buildGoals();
  const on=document.querySelector('.screen.on').id;
  if(on==='s2')renderItems();

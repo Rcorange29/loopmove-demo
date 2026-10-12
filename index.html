@@ -794,7 +794,7 @@ function renderItems(){
  const l=document.getElementById('itemList');l.innerHTML='';
  S.items.forEach(it=>{
   const c=document.createElement('div');c.className='item';c.draggable=true;c.dataset.id=it.id;
-  c.innerHTML=`<b>${it.name}</b><small>${it.size} · ${it.vol}m³</small>`;
+  c.innerHTML=`<b>${nm(it)}</b><small>${it.size} · ${it.vol}m³</small>`;
   c.title=T('editTip');
   c.addEventListener('dragstart',e=>e.dataTransfer.setData('text',it.id));
   c.addEventListener('click',()=>openEditor(it));
@@ -810,7 +810,7 @@ function renderRecognized(photoUrl,items){
   let b=it.bbox;
   if(!b){const cols=3,rows=Math.ceil(items.length/cols),cw=100/cols,chh=100/rows;
    b=[(i%cols)*cw+1, Math.floor(i/cols)*chh+1, (i%cols+1)*cw-1, (Math.floor(i/cols)+1)*chh-1];}
-  html+='<div class="anno" data-id="'+it.id+'" style="left:'+b[0]+'%;top:'+b[1]+'%;width:'+(b[2]-b[0])+'%;height:'+(b[3]-b[1])+'%"><b>'+it.name+'</b><span>'+it.vol+'m³</span></div>';
+  html+='<div class="anno" data-id="'+it.id+'" style="left:'+b[0]+'%;top:'+b[1]+'%;width:'+(b[2]-b[0])+'%;height:'+(b[3]-b[1])+'%"><b>'+nm(it)+'</b><span>'+it.vol+'m³</span></div>';
  });
  html+='</div>';
  box.innerHTML=html;
@@ -1145,6 +1145,7 @@ zhHans:{
 let LANG=localStorage.getItem('lm-lang')||'en';
 const T=k=>{const d=I18N[LANG]||I18N.en;return (k in d)?d[k]:k;};
 const TF=(k,o)=>String(T(k)).replace(/\{(\w+)\}/g,(m,x)=>o[x]!==undefined?o[x]:m);
+function nm(i){if(i&&i._key){const s0=SEED.find(x=>x.name===i._key);if(s0)return LANG==='en'?(s0.en||i._key):(LANG==='zhHant'?(s0.hant||i._key):i._key);}return i?i.name:'';}
 function applyLang(){
  document.querySelectorAll('[data-i18n]').forEach(el=>{
   const v=T(el.dataset.i18n);
@@ -1192,11 +1193,11 @@ function awaitConfirm(msg){return new Promise(res=>bConfirm(msg,()=>res(true),()
 function dayLabel(i){return T('dayn_'+i)||('Day '+i);}
 /* 无障碍：语音朗读 / 老年两步式选天 / 视障读卡 */
 function speak(t){try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang=LANG==='en'?'en-US':(LANG==='zhHant'?'zh-HK':'zh-CN');u.rate=0.95;speechSynthesis.speak(u);}catch(e){}}
-function lowRead(it){const d=(it.bucket||'').replace('day','');speak(d==='trash'?TF('speakLowBin',{name:it.name}):TF('speakLow',{name:it.name,size:it.size||'',vol:it.vol||0,d:d||'0'}));}
+function lowRead(it){const d=(it.bucket||'').replace('day','');speak(d==='trash'?TF('speakLowBin',{name:nm(it)}):TF('speakLow',{name:nm(it),size:it.size||'',vol:it.vol||0,d:d||'0'}));}
 function eldPick(it){
  const bar=document.getElementById('eldBar');
  const chips=Array.from({length:S.trips},(_,i)=>'<button class="ghost" data-d="'+(i+1)+'">Day '+(i+1)+' '+(dayLabel(i+1))+'</button>').join('');
- bar.innerHTML='<b style="display:block;margin-bottom:8px">'+TF('eldPut',{n:esc(it.name)})+'</b><div class="row">'+chips+'<button class="ghost" data-d="trash">'+T('eldTrash')+'</button><button class="ghost" id="eldCancel">'+T('eldCancel')+'</button></div>';
+ bar.innerHTML='<b style="display:block;margin-bottom:8px">'+TF('eldPut',{n:esc(nm(it))})+'</b><div class="row">'+chips+'<button class="ghost" data-d="trash">'+T('eldTrash')+'</button><button class="ghost" id="eldCancel">'+T('eldCancel')+'</button></div>';
  bar.style.display='block';
  bar.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{
   const d=b.dataset.d;it.bucket=d==='trash'?'trash':'day'+d;
@@ -1206,7 +1207,7 @@ function eldPick(it){
 }
 /* 急需度：1=当天就要用，2=安顿后搬，3=最后搬 */
 function urgency(it){
- const k=(it.kind||'')+' '+(it.name||'');
+ const k=(it.kind||'')+' '+(it._key||it.name||'');
  if(/随身电子|电子|手机|笔记本|电脑|床品|枕头|被子|床垫|衣物|洗漱|炊具|餐具/.test(k))return 1;
  if(/大件家具|床架|沙发|衣柜|书桌|书柜|大家电|冰箱|洗衣|空调|电视|办公椅/.test(k))return 2;
  return 3;
@@ -1228,10 +1229,10 @@ function renderBoard(){
     slot.innerHTML='';
     S.items.filter(i=>i.bucket===k).forEach(it=>{
       const c=document.createElement('div');c.className='item'+(k==='trash'?' trash':'');c.draggable=true;c.dataset.id=it.id;
-      c.innerHTML=`<b>${it.name}</b><small>${it.size} · ${it.vol}m³</small>`;
+      c.innerHTML=`<b>${nm(it)}</b><small>${it.size} · ${it.vol}m³</small>`;
       c.addEventListener('dragstart',e=>e.dataTransfer.setData('text',it.id));
       c.tabIndex=0;
-      c.setAttribute('aria-label',TF('ariaItem',{name:it.name,size:it.size||'',vol:it.vol||0,d:(k==='trash'?T('selTrash'):k.replace('day',''))}));
+      c.setAttribute('aria-label',TF('ariaItem',{name:nm(it),size:it.size||'',vol:it.vol||0,d:(k==='trash'?T('selTrash'):k.replace('day',''))}));
       c.addEventListener('click',()=>{
        if(document.body.classList.contains('eld'))eldPick(it);
        else if(document.body.classList.contains('lowvision'))lowRead(it);
@@ -1239,8 +1240,8 @@ function renderBoard(){
       c.addEventListener('keydown',e=>{
        if(!document.body.classList.contains('lowvision'))return;
        const kk=+e.key;
-       if(kk>=1&&kk<=S.trips){it.bucket='day'+kk;renderBoard();speak(TF('speakPut',{name:it.name,d:kk}));}
-       else if(e.key==='0'||e.key==='Delete'){it._from=it._from||it.bucket;it.bucket='trash';renderBoard();speak(TF('speakBin',{name:it.name}));}
+       if(kk>=1&&kk<=S.trips){it.bucket='day'+kk;renderBoard();speak(TF('speakPut',{name:nm(it),d:kk}));}
+       else if(e.key==='0'||e.key==='Delete'){it._from=it._from||it.bucket;it.bucket='trash';renderBoard();speak(TF('speakBin',{name:nm(it)}));}
        else if(e.key==='Enter'){e.preventDefault();lowRead(it);}
       });
       slot.appendChild(c);
@@ -1302,7 +1303,7 @@ function renderTrashList(){
  }
  trash.forEach(it=>{
   const c=document.createElement('div');c.className='item';c.dataset.id=it.id;
-  c.innerHTML=`<b>${it.name}</b><small>${it.size} · ${it.vol}m³</small><button class="ghost back">${T('trashPutBack')}</button>`;
+  c.innerHTML=`<b>${nm(it)}</b><small>${it.size} · ${it.vol}m³</small><button class="ghost back">${T('trashPutBack')}</button>`;
   c.querySelector('.back').onclick=()=>{it.bucket=it._from||'day1';delete it._from;renderTrashList();if(document.getElementById('s3').classList.contains('on'))renderBoard();if(document.getElementById('s2').classList.contains('on'))renderItems();};
   l.appendChild(c);
  });
@@ -1329,7 +1330,7 @@ function aiWhyText(){
  const p=S.purpose||'phased';
  const N=S.trips;
  const day1=S.items.filter(i=>i.bucket==='day1');
- const d1n=day1.map(i=>i.name).slice(0,5).join('、');
+ const d1n=day1.map(nm).slice(0,5).join('、');
  if(p==='fast')return TF('aiWhyFast',{d1:d1n});
  if(p==='minimal')return TF('aiWhyLight',{d1:d1n});
  return TF('aiWhyEasy',{d1:d1n,n:N});
@@ -1389,7 +1390,7 @@ document.getElementById('autoSplit').onclick=()=>{
  sEl.innerHTML='';
  if(aiSuggest.length){
   sEl.innerHTML='<div class="ai-suggest">'+TF('aiSuggest',{n:aiSuggest.length})
-   +aiSuggest.map(i=>'<b>'+esc(i.name)+'</b>').join('、')
+   +aiSuggest.map(i=>'<b>'+esc(nm(i))+'</b>').join('、')
    +'<br><button class="ghost" id="applySuggest" style="margin-top:8px">'+T('aiApply')+'</button></div>';
   document.getElementById('applySuggest').onclick=()=>{
    aiSuggest.forEach(i=>{i.bucket='trash';});
@@ -1423,7 +1424,7 @@ document.getElementById('back3d').onclick=()=>go(3);
 document.getElementById('aiFill2').onclick=()=>{
  S.items.filter(i=>i.bucket==='trash').forEach(i=>{
   const s=suggestChannel(i);
-  i.plan=/随身电子|床品|衣/.test(i.kind||i.name)?'keep':'rebuy';
+  i.plan=/随身电子|床品|衣/.test(i.kind||i._key||i.name)?'keep':'rebuy';
   if(i.plan==='keep')i.day=1;
   i.handle=/WEEE/.test(s.ch)?'recycle':/Carousell/.test(s.ch)?'sell':/救世军/.test(s.ch)?'donate':'recycle';
  });
@@ -1444,8 +1445,8 @@ document.getElementById('to5').onclick=()=>{
   const adds=moving.filter(i=>i.day===d);
   if(!existing.length&&!adds.length)return;
   cols+=`<div class="cf-col"><h4>Day ${d}</h4>`;
-  existing.forEach(i=>{cols+=`<div class="cf-item normal">${i.name} <small>${i.vol}m³</small></div>`;});
-  adds.forEach(i=>{cols+=`<div class="cf-item hl">${i.name} <small>${i.vol}m³ · ${T('cfNew')}</small></div>`;});
+  existing.forEach(i=>{cols+=`<div class="cf-item normal">${nm(i)} <small>${i.vol}m³</small></div>`;});
+  adds.forEach(i=>{cols+=`<div class="cf-item hl">${nm(i)} <small>${i.vol}m³ · ${T('cfNew')}</small></div>`;});
   cols+='</div>';
  });
  document.getElementById('cfBox').innerHTML=`<h3>${T('cfHead')}</h3><p style="font-size:12px;color:var(--muted);margin:8px 0">${T('cfDesc')}</p><div class="cf-grid">${cols}</div>`;
@@ -1502,7 +1503,7 @@ function renderModal(){ if(document.body.classList.contains('lowvision'))setTime
   if(h==='recycle')hHtml+=`<div class="hint">${T('s4ready')}<a class="chip2" href="https://www.wastereduction.gov.hk/zh-cn/waste-reduction-programme/green-at-community" target="_blank" rel="noopener">${T('s4green')}</a></div>`;
   hHtml+='</div>';
   list.insertAdjacentHTML('beforeend',`<div class="disp-row">
-    <div class="info"><b>${it.name}</b><small>${it.size} · ${it.vol}m³<br>${T('s4rebuyP')} HK$${it.rebuy} · ${T('s4usedP')} HK$${it.recover}</small></div>
+    <div class="info"><b>${nm(it)}</b><small>${it.size} · ${it.vol}m³<br>${T('s4rebuyP')} HK$${it.rebuy} · ${T('s4usedP')} HK$${it.recover}</small></div>
     <div class="dacts">${planHtml}${hHtml}</div>
   </div>`);
  });
@@ -1515,7 +1516,7 @@ function renderModal(){ if(document.body.classList.contains('lowvision'))setTime
 function recalc(){renderModal();}
 /* 按物品类型给真实建议渠道 */
 function suggestChannel(it){
- const k=(it.kind||'')+' '+(it.name||'');
+ const k=(it.kind||'')+' '+(it._key||it.name||'');
  if(/大家电|冰箱|洗衣|空调|电视/.test(k))return{ch:'欧绿保 WEEE',why:'旧电器免费上门回收'};
  if(/床品|衣|枕|被/.test(k)&&!/床架|床垫/.test(k))return{ch:'救世军物资捐赠',why:'干净床品衣物可捐赠'};
  if(/大件家具|床架|床垫|桌|椅|沙发|柜/.test(k))return{ch:'Carousell',why:'家具二手转卖回血最高'};
@@ -1529,7 +1530,7 @@ const IS_STATIC=location.protocol==='https:'&&!['localhost','127.0.0.1'].include
 let ieCurrent=null;
 function openEditor(it){
  ieCurrent=it;
- document.getElementById('ieName').value=it.name;
+ document.getElementById('ieName').value=nm(it);
  const m=(it.size||'').match(/(\d+)\D+(\d+)\D+(\d+)/);
  document.getElementById('ieL').value=m?m[1]:'';
  document.getElementById('ieW').value=m?m[2]:'';
@@ -1565,7 +1566,7 @@ document.getElementById('ieDelete').onclick=()=>{
 document.querySelectorAll('.anno').forEach(a=>{
  a.addEventListener('click',()=>{
    const nm=a.querySelector('b').textContent.trim();
-   const it=S.items.find(i=>i.name===nm)||S.items.find(i=>i.name.includes(nm.slice(0,2)));
+   const it=S.items.find(i=>nm(i)===nm)||S.items.find(i=>nm(i).includes(nm.slice(0,2)));
    if(it)openEditor(it);
  });
 });
@@ -1586,11 +1587,11 @@ function renderPlan(){ if(document.body.classList.contains('lowvision'))setTimeo
    const its=S.items.filter(i=>i.bucket===k);
    const v=its.reduce((a,i)=>a+i.vol,0);
    pd.insertAdjacentHTML('beforeend',`<div class="plan-day"><h3>Day ${i} · ${dayLabel(i)}</h3><div class="vol">${its.length} ${T('s5pcs')} · ${v.toFixed(2)}m³</div>
-     ${its.length?its.map(i=>`<div style="font-size:15px;padding:3px 0">· ${i.name} <small class="mono" style="color:var(--muted)">${i.vol}m³</small></div>`).join(''):'<p style="font-size:13px;color:var(--muted)">'+T('s5empty')+'</p>'}
+     ${its.length?its.map(i=>`<div style="font-size:15px;padding:3px 0">· ${nm(i)} <small class="mono" style="color:var(--muted)">${i.vol}m³</small></div>`).join(''):'<p style="font-size:13px;color:var(--muted)">'+T('s5empty')+'</p>'}
      <div class="trip">${TF('s5trip',{v:v.toFixed(2)})}</div></div>`);
  }
  const trash=S.items.filter(i=>i.bucket==='trash');
- document.getElementById('planTrash').innerHTML=trash.length?trash.map(i=>`<div style="font-size:15px;padding:3px 0">· ${TF('s5tline',{name:i.name,r:i.rebuy,c:i.recover})}</div>`).join(''):'<p style="font-size:13px;color:var(--muted)">'+T('s5nothing')+'</p>';
+ document.getElementById('planTrash').innerHTML=trash.length?trash.map(i=>`<div style="font-size:15px;padding:3px 0">· ${TF('s5tline',{name:nm(i),r:i.rebuy,c:i.recover})}</div>`).join(''):'<p style="font-size:13px;color:var(--muted)">'+T('s5nothing')+'</p>';
 }
 /* 无障碍：朗读按钮 + 求助 */
 document.getElementById('speakWhy').onclick=()=>{const t=document.getElementById('aiWhyText').innerText;const s2=document.getElementById('aiSuggestBox').innerText;speak((t+'. '+s2).replace(/[🔊📢▍]/g,''));};

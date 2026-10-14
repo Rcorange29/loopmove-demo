@@ -433,14 +433,15 @@ body.eld .map-legend .lg{font-size:14px;}
 }
 @media print{#fab,.topbar,.row button,.no-print{display:none!important;}.screen{display:block!important;}.map-card{display:none!important;}}
 </style>
+<link rel="stylesheet" href="journey.css">
 </head>
 <body>
 <div class="wrap">
   <header class="topbar">
     <div class="logo"><i></i>LoopMove</div>
-    <div class="steps">
-      <b data-step="1" data-i18n="nav1">1 目的地</b><b data-step="2" data-i18n="nav2">2 物品</b><b data-step="3" data-i18n="nav3">3 分天</b><b data-step="4" data-i18n="nav4">4 处理</b><b data-step="5" data-i18n="nav5">5 计划</b>
-    </div>
+    <nav class="steps" aria-label="搬家步骤">
+      <button type="button" data-step="1" data-i18n="nav1">1 目的地</button><button type="button" data-step="2" data-i18n="nav2">2 物品</button><button type="button" data-step="3" data-i18n="nav3">3 分天</button><button type="button" data-step="4" data-i18n="nav4">4 处理</button><button type="button" data-step="5" data-i18n="nav5">5 计划</button>
+    </nav>
     <div class="acc" id="accSwitch">
       <button data-acc="" title="标准版" data-i18n="accStd">标准版</button><button data-acc="elder" title="老年版" data-i18n="accEld">老年版</button><button data-acc="lowvision" title="视障版" data-i18n="accLv">视障版</button>
     </div>
@@ -451,14 +452,12 @@ body.eld .map-legend .lg{font-size:14px;}
 
   <!-- SCREEN 1 -->
   <section class="screen on" id="s1">
-    <p class="eyebrow">A More Considered Move</p>
-    <h1><span data-i18n="s1h1a">搬到香港北部，</span><em data-i18n="s1h1b">先定哪里。</em></h1>
-    <p class="lead" data-i18n="s1lead">选一个你想去的片区。选完填个小问卷——搬几趟由你定，后面我帮你把东西分到每一天、每一趟，再算一笔账。</p>
+    <h1 data-i18n="nav1"></h1>
     <div class="dest-grid" id="destGrid"></div>
     <div class="panel" id="surveyBox" style="display:none">
       <div class="survey">
-        <div class="field"><label data-i18n="s1f1">预计入住时间</label><input type="month" id="f-date" value="2027-09"></div>
-        <div class="field"><label data-i18n="s1f2">搬几趟（你定，我按这个排）</label><input type="number" id="f-trips" min="1" max="8" value="2"><small id="tripsHint" data-i18n="s1tripsHint">填几趟，最终计划就按几趟均衡分配体积</small></div>
+        <div class="field"><label data-i18n="s1f1">预计入住时间</label><input type="date" id="f-date" value="2027-09-01"></div>
+        <input type="hidden" id="f-trips" value="3"><small id="tripsHint" hidden></small>
       </div>
       <div class="cta-row">
         <button class="primary big" id="to2" data-i18n="s1cta">开始整理我的物品 →</button>
@@ -468,9 +467,7 @@ body.eld .map-legend .lg{font-size:14px;}
 
   <!-- SCREEN 2 -->
   <section class="screen" id="s2">
-    <p class="eyebrow" data-i18n="s2eyebrow">Step 2 · 录入物品</p>
-    <h1><span data-i18n="s2h1a">这一间房，</span><em data-i18n="s2h1b">有哪些东西？</em></h1>
-    <p class="lead" data-i18n="s2lead">打字、说话、拍照都行。我会记下名字、估个尺寸和体积。可以先存个大概，不用一次录完。</p>
+    <h1 data-i18n="nav2"></h1>
     <div class="addbar">
       <input id="itemName" data-i18n="s2ph" placeholder="例如：床垫、枕头、两把椅子…">
       <button id="addText" data-i18n="s2add">＋ 添加</button>
@@ -515,15 +512,14 @@ body.eld .map-legend .lg{font-size:14px;}
 
   <!-- SCREEN 3 -->
   <section class="screen" id="s3">
-    <p class="eyebrow" data-i18n="s3eyebrow">Step 3 · 按紧急程度分天</p>
-    <h1><span data-i18n="s3h1a">哪些</span><em data-i18n="s3h1b">当天就要用？</em></h1>
-    <p class="lead" data-i18n="s3lead">把卡片拖到对应天。Day1 马上要用，后面几天按趟数排，越往后越不急。不要的丢进垃圾桶。</p>
+    <h1 data-i18n="nav3"></h1>
+    <div id="timelineTools" class="timeline-tools"></div>
     <div class="days-wrap">
       <div class="board" id="board"></div>
       <div class="map-card" id="mapCard">
         <div class="mc-head"><b data-i18n="mapTitle">🗺 目的地周边</b><small class="mono" id="mapDest"></small></div>
         <div id="mapBox" class="map-box" role="region" aria-label="周边设施地图"></div>
-        <div class="map-legend" id="mapLegend"></div>
+        <div class="map-legend" id="mapLegend"></div><div id="shopMatches" aria-live="polite"></div>
         <p class="mc-hint" data-i18n="mapHint">点击标记查看设施详情</p>
       </div>
     </div>
@@ -542,9 +538,7 @@ body.eld .map-legend .lg{font-size:14px;}
 
   <!-- SCREEN 4: 处理废物 -->
   <section class="screen" id="s4">
-    <p class="eyebrow" data-i18n="s4eyebrow">Step 4 · 不搬的东西怎么办</p>
-    <h1><span data-i18n="s4h1a">每件</span><em data-i18n="s4h1b">都给个交代。</em></h1>
-    <p class="lead" data-i18n="s4lead">左边决定新址需求（带走或重买），右边决定就地处理（卖/捐/回收）。选完点下面按钮确认。</p>
+    <h1 data-i18n="nav4"></h1>
     <div class="disp-summary" id="dispSummary"></div>
     <div id="dispList" style="max-height:50vh;overflow:auto;padding:10px 0"></div>
     <div class="row no-print">
@@ -557,8 +551,7 @@ body.eld .map-legend .lg{font-size:14px;}
 
   <!-- SCREEN 5: 整体计划 -->
   <section class="screen" id="s5">
-    <p class="eyebrow" data-i18n="s5eyebrow">Step 5 · 你的搬家计划</p>
-    <h1><span data-i18n="s5h1a">按天按趟，</span><em data-i18n="s5h1b">一目了然。</em></h1>
+    <h1 data-i18n="nav5"></h1>
     <p class="lead" id="planMeta"></p>
     <div class="summary-strip" id="kpis"></div>
     <div id="planDays"></div>
@@ -755,7 +748,7 @@ function estimateItem(name){
 function go(n){
  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
  document.getElementById('s'+n).classList.add('on');
- document.querySelectorAll('.steps b').forEach(b=>b.classList.toggle('on',+b.dataset.step<=n));
+ document.querySelectorAll('.steps [data-step]').forEach(b=>b.classList.toggle('on',+b.dataset.step<=n));
  window.scrollTo(0,0);
  if(document.body.classList.contains('lowvision')){
   speak(TF('gstepT',{n:n})+T('gstep'+n)+'。'+T('gtip'+n));
@@ -853,7 +846,7 @@ function renderMap(){
  else{_mv={c:_map.getCenter(),z:_map.getZoom()};}
  if(_layer){_layer.remove();_layer=null;}
  _layer=L.layerGroup().addTo(_map);
- const pts=cfg.facilities.map(f=>{
+ const pts=cfg.facilities.filter(matchesFacility).map(f=>{
   const c=MAP_CATS[f.cat]||MAP_CATS.convenience;
   const ic=L.divIcon({className:'',html:'<div class="lm-pin" style="border-color:'+c.color+'" title="'+esc(t3(f.name))+'">'+c.icon+'</div>',iconSize:[34,34],iconAnchor:[17,17],popupAnchor:[0,-16]});
   const m=L.marker([f.lat,f.lng],{icon:ic}).addTo(_layer);
@@ -895,7 +888,7 @@ function renderGMap(){
  _gmarkers.forEach(m=>m.setMap(null));_gmarkers=[];
  if(_ginfo)_ginfo.close();
  const bounds=new google.maps.LatLngBounds();
- cfg.facilities.forEach(f=>{
+ cfg.facilities.filter(matchesFacility).forEach(f=>{
   const c=MAP_CATS[f.cat]||MAP_CATS.convenience;
   const m=new google.maps.Marker({position:{lat:f.lat,lng:f.lng},map:_gmap,icon:gIcon(c.color,c.icon),title:t3(f.name)});
   m.addListener('click',()=>{if(_ginfo)_ginfo.close();_ginfo=new google.maps.InfoWindow({content:popupHtml(f,c),maxWidth:260});_ginfo.open({map:_gmap,anchor:m});});
@@ -985,7 +978,7 @@ function addItem(name,photo,ov){
  if(!name)return;
  const e=estimateItem(name);
  ov=ov||{};
- S.items.push({id:uid(),name,size:ov.size||e.size,vol:ov.vol||e.vol,kind:ov.kind||e.kind,ch:ov.ch||e.ch,bbox:ov.bbox||null,photo:photo||null,bucket:e.day,rebuy:e.rebuy,recover:e.recover});
+ S.items.push({id:uid(),name,size:ov.size||e.size,vol:ov.vol||e.vol,kind:ov.kind||e.kind,ch:ov.ch||e.ch,fixed:ov.fixed===true,bbox:ov.bbox||null,photo:photo||null,bucket:e.day,rebuy:e.rebuy,recover:e.recover});
  renderItems();
 }
 function renderItems(){
@@ -1008,7 +1001,7 @@ function renderRecognized(photoUrl,items){
   let b=it.bbox;
   if(!b){const cols=3,rows=Math.ceil(items.length/cols),cw=100/cols,chh=100/rows;
    b=[(i%cols)*cw+1, Math.floor(i/cols)*chh+1, (i%cols+1)*cw-1, (Math.floor(i/cols)+1)*chh-1];}
-  html+='<div class="anno" data-id="'+it.id+'" style="left:'+b[0]+'%;top:'+b[1]+'%;width:'+(b[2]-b[0])+'%;height:'+(b[3]-b[1])+'%"><b>'+nm(it)+'</b><span>'+it.vol+'m³</span></div>';
+  html+='<div class="anno" data-id="'+it.id+'" style="left:'+b[0]+'%;top:'+b[1]+'%;width:'+(b[2]-b[0])+'%;height:'+(b[3]-b[1])+'%"><b>'+(it.fixed?'⚠️ ':'')+esc(nm(it))+'</b><span>'+it.vol+'m³</span></div>';
  });
  html+='</div>';
  box.innerHTML=html;
@@ -1049,7 +1042,7 @@ document.getElementById('photoInput').onchange=e=>{
      if(document.body.classList.contains('lowvision'))speak(TF('speakDone',{n:j.items.length}));
      const before=S.items.length;
      setTimeout(()=>{mask.classList.remove('show');
-      j.items.forEach(it=>addItem(it.name,ev.target.result,{size:it.size,vol:it.vol,kind:it.kind,ch:it.channel,bbox:it.bbox}));
+      j.items.forEach(it=>addItem(it.name,ev.target.result,{size:it.size,vol:it.vol,kind:it.kind,ch:it.channel,bbox:it.bbox,fixed:it.fixed}));
       renderRecognized(ev.target.result,S.items.slice(before));
      },500);
     }else if(attempt===1){ step.textContent=T('recRetry'); }
@@ -1349,7 +1342,7 @@ mapFurDesc:'可买床架、书桌等大件。',mapMallDesc:'一站式补足日�
  cfNew:'新加入',recTitle:'AI 正在识别物品',recNote:'首次识别约需 1–2 分钟，请保持页面打开',
 }
 };
-let LANG=localStorage.getItem('lm-lang')||'en';
+let LANG=localStorage.getItem('lm-lang')||'zhHans';
 const T=k=>{const d=I18N[LANG]||I18N.en;return (k in d)?d[k]:k;};
 const TF=(k,o)=>String(T(k)).replace(/\{(\w+)\}/g,(m,x)=>o[x]!==undefined?o[x]:m);
 function nm(i){if(i&&i._key){const s0=SEED.find(x=>x.name===i._key);if(s0)return LANG==='en'?(s0.en||i._key):(LANG==='zhHant'?(s0.hant||i._key):i._key);}return i?i.name:'';}
@@ -1773,8 +1766,8 @@ document.getElementById('ieDelete').onclick=()=>{
 /* 标注框可点 → 打开编辑 */
 document.querySelectorAll('.anno').forEach(a=>{
  a.addEventListener('click',()=>{
-   const nm=a.querySelector('b').textContent.trim();
-   const it=S.items.find(i=>nm(i)===nm)||S.items.find(i=>nm(i).includes(nm.slice(0,2)));
+   const label=a.querySelector('b').textContent.replace(/^⚠️\s*/, '').trim();
+   const it=S.items.find(i=>nm(i)===label)||S.items.find(i=>nm(i).includes(label.slice(0,2)));
    if(it)openEditor(it);
  });
 });
@@ -1833,5 +1826,6 @@ buildDest();
 buildGoals();
 document.querySelector('#accSwitch button[data-acc=""]').classList.add('on');
 </script>
+<script src="journey.js"></script>
 </body>
 </html>

@@ -1342,7 +1342,7 @@ mapFurDesc:'可买床架、书桌等大件。',mapMallDesc:'一站式补足日�
  cfNew:'新加入',recTitle:'AI 正在识别物品',recNote:'首次识别约需 1–2 分钟，请保持页面打开',
 }
 };
-let LANG=localStorage.getItem('lm-lang')||'zhHans';
+let LANG=localStorage.getItem('lm-lang')||'en';
 const T=k=>{const d=I18N[LANG]||I18N.en;return (k in d)?d[k]:k;};
 const TF=(k,o)=>String(T(k)).replace(/\{(\w+)\}/g,(m,x)=>o[x]!==undefined?o[x]:m);
 function nm(i){if(i&&i._key){const s0=SEED.find(x=>x.name===i._key);if(s0)return LANG==='en'?(s0.en||i._key):(LANG==='zhHant'?(s0.hant||i._key):i._key);}return i?i.name:'';}

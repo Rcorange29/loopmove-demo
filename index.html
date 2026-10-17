@@ -1028,7 +1028,7 @@ document.getElementById('photoInput').onchange=e=>{
   step.textContent=T('recUpload'); bar.style.width='20%';
   let timer=setTimeout(()=>{step.textContent=T('recAI');bar.style.width='55%';},2500);
   setTimeout(()=>{step.textContent=T('recList');bar.style.width='85%';},15000);
-  let ok=false;
+  let ok=false,lastError=null;
   if(IS_STATIC){
    clearTimeout(timer); mask.classList.remove('show');
    bAlert(T('recStatic'));
@@ -1036,8 +1036,9 @@ document.getElementById('photoInput').onchange=e=>{
   }
   for(let attempt=1;attempt<=2&&!ok;attempt++){
    try{
-    const res=await fetch(API_BASE+'/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:ev.target.result})});
+    const res=await fetch(API_BASE+'/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:ev.target.result}),signal:AbortSignal.timeout(45000)});
     const j=await res.json();
+    if(!res.ok)throw new Error(j.message||j.error||'AI recognition failed');
     if(j.items&&j.items.length){ ok=true;
      bar.style.width='100%'; step.textContent=T('recDone');
      if(document.body.classList.contains('lowvision'))speak(TF('speakDone',{n:j.items.length}));
@@ -1047,11 +1048,11 @@ document.getElementById('photoInput').onchange=e=>{
       renderRecognized(ev.target.result,S.items.slice(before));
      },500);
     }else if(attempt===1){ step.textContent=T('recRetry'); }
-   }catch(err){ ok=false; break; }
+   }catch(err){ lastError=err; ok=false; break; }
   }
   if(!ok){
    clearTimeout(timer); mask.classList.remove('show');
-   bAlert(T('recStatic'));
+   bAlert(lastError&&lastError.message?lastError.message:T('recStatic'));
   }
  };rd.readAsDataURL(f);
 };
@@ -1604,7 +1605,7 @@ document.getElementById('autoSplit').onclick=()=>{
  }
  typeText(tEl, aiWhyText());
  /* 异步调模型生成更详细的解释，失败不影响本地文案（静态版跳过） */
- if(!IS_STATIC) fetch(API_BASE+'/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dest:S.dest||'',purpose:p,items:sorted.map(i=>({name:i.name,vol:i.vol,kind:i.kind}))})})
+ if(!IS_STATIC) fetch(API_BASE+'/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dest:S.dest||'',purpose:p,items:sorted.map(i=>({name:i.name,vol:i.vol,kind:i.kind}))}),signal:AbortSignal.timeout(45000)})
   .then(r=>r.json()).then(j=>{if(j.text)typeText(tEl,j.text);})
   .catch(()=>{});
 };
@@ -1615,10 +1616,11 @@ document.getElementById('genPlan').onclick=async e=>{ const box=document.getElem
  try{
   const res=await fetch(API_BASE+'/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
    dest:S.dest||'', items:S.items.filter(i=>i.bucket!=='trash').map(i=>({name:i.name,vol:i.vol,kind:i.kind,ch:i.ch}))
-  })});
+  }),signal:AbortSignal.timeout(45000)});
   const j=await res.json();
+  if(!res.ok)throw new Error(j.message||j.error||'AI plan failed');
   typeText(box, j.text||'(failed, try again later)');
- }catch(err){ typeText(box,T('planStatic')); }
+ }catch(err){ typeText(box,err&&err.message?err.message:T('planStatic')); }
 };
 document.getElementById('back3').onclick=()=>go(3);
 /* step4 处理页导航 */

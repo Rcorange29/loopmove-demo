@@ -656,6 +656,7 @@ body.eld .map-legend .lg{font-size:14px;}
 </div>
 <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
+<script src="config.js"></script>
 <script>
 /* ---------- data (reused from GitHub source) ---------- */
 const DESTS=[
@@ -1035,7 +1036,7 @@ document.getElementById('photoInput').onchange=e=>{
   }
   for(let attempt=1;attempt<=2&&!ok;attempt++){
    try{
-    const res=await fetch('/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:ev.target.result})});
+    const res=await fetch(API_BASE+'/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:ev.target.result})});
     const j=await res.json();
     if(j.items&&j.items.length){ ok=true;
      bar.style.width='100%'; step.textContent=T('recDone');
@@ -1603,7 +1604,7 @@ document.getElementById('autoSplit').onclick=()=>{
  }
  typeText(tEl, aiWhyText());
  /* 异步调模型生成更详细的解释，失败不影响本地文案（静态版跳过） */
- if(!IS_STATIC) fetch('/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dest:S.dest||'',purpose:p,items:sorted.map(i=>({name:i.name,vol:i.vol,kind:i.kind}))})})
+ if(!IS_STATIC) fetch(API_BASE+'/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dest:S.dest||'',purpose:p,items:sorted.map(i=>({name:i.name,vol:i.vol,kind:i.kind}))})})
   .then(r=>r.json()).then(j=>{if(j.text)typeText(tEl,j.text);})
   .catch(()=>{});
 };
@@ -1612,7 +1613,7 @@ document.getElementById('genPlan').onclick=async e=>{ const box=document.getElem
  box.innerHTML='<span class="ai-loading">'+T('genLoading')+'</span>';
  if(IS_STATIC){ typeText(box,T('planStatic')); return; }
  try{
-  const res=await fetch('/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+  const res=await fetch(API_BASE+'/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
    dest:S.dest||'', items:S.items.filter(i=>i.bucket!=='trash').map(i=>({name:i.name,vol:i.vol,kind:i.kind,ch:i.ch}))
   })});
   const j=await res.json();
@@ -1725,8 +1726,9 @@ function suggestChannel(it){
  if(/书|纸|零碎/.test(k))return{ch:'绿在区区',why:'纸类/零碎就近回收'};
  return{ch:'绿在区区',why:'一般可回收物'};
 }
-/* 静态托管环境探测（公网版无后端 API，跳过请求走降级） */
-const IS_STATIC=true; // Static demo: enable only when a same-origin AI backend is deployed.
+/* Use the deployed API base URL when configured; localhost uses its own origin. */
+const API_BASE=(window.LOOPMOVE_API_BASE||( ['localhost','127.0.0.1'].includes(location.hostname)?location.origin:'' )).replace(/\/+$/,'');
+const IS_STATIC=!API_BASE;
 /* ---------- item editor ---------- */
 let ieCurrent=null;
 function openEditor(it){

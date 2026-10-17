@@ -216,7 +216,7 @@ function chooseArrangement(){
 async function smartArrange(){
  normalizeItems();
  classifier.innerHTML='<h2>'+jl('正在安排…','Planning…','正在安排…')+'</h2>';let ai=false;
- if(!IS_STATIC){try{const response=await fetch('/api/arrange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dates:journey.dates,items:S.items.filter(i=>!i.fixed).map(i=>({id:i.id,name:i.name,kind:i.kind}))}),signal:AbortSignal.timeout(15000)});if(response.ok){const data=await response.json();const valid=new Map((data.items||[]).filter(i=>Number.isInteger(i.day)&&i.day>=1&&i.day<=journey.dates.length).map(i=>[i.id,i.day]));ai=S.items.filter(i=>!i.fixed).every(i=>valid.has(i.id));if(ai)S.items.filter(i=>!i.fixed).forEach(i=>i.bucket='day'+valid.get(i.id));}}catch(e){}}
+ if(!IS_STATIC){try{const response=await fetch(API_BASE+'/api/arrange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dates:journey.dates,items:S.items.filter(i=>!i.fixed).map(i=>({id:i.id,name:i.name,kind:i.kind}))}),signal:AbortSignal.timeout(15000)});if(response.ok){const data=await response.json();const valid=new Map((data.items||[]).filter(i=>Number.isInteger(i.day)&&i.day>=1&&i.day<=journey.dates.length).map(i=>[i.id,i.day]));ai=S.items.filter(i=>!i.fixed).every(i=>valid.has(i.id));if(ai)S.items.filter(i=>!i.fixed).forEach(i=>i.bucket='day'+valid.get(i.id));}}catch(e){}}
  if(!ai)S.items.filter(i=>!i.fixed&&!i.classified).forEach(it=>{
   const group=itemGroup(it);
   const shops=(DAY_LOCS[S.dest?.id]||DAY_LOCS.hsk).facilities.some(f=>f.cat===category(it));

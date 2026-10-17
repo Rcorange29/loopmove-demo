@@ -22,7 +22,7 @@ jobs:
       - name: Prepare static demo
         run: |
           mkdir _site
-          cp index.html journey.js journey.css _site/
+          cp index.html config.js journey.js journey.css _site/
           cp -R assets _site/assets
           touch _site/.nojekyll
       - uses: actions/upload-pages-artifact@v3

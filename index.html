@@ -1726,7 +1726,7 @@ function suggestChannel(it){
  return{ch:'绿在区区',why:'一般可回收物'};
 }
 /* 静态托管环境探测（公网版无后端 API，跳过请求走降级） */
-const IS_STATIC=location.protocol==='https:'&&!['localhost','127.0.0.1'].includes(location.hostname);
+const IS_STATIC=true; // Static demo: enable only when a same-origin AI backend is deployed.
 /* ---------- item editor ---------- */
 let ieCurrent=null;
 function openEditor(it){

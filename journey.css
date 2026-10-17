@@ -28,7 +28,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:3px soli
 .dest:hover { background:var(--wash); }
 .dest.sel { background:var(--wash); box-shadow:var(--shadow); outline:3px solid var(--brand); outline-offset:3px; }
 .dest .tag { padding:3px 8px; border:2px solid var(--line); border-radius:0; background:var(--wash); font-weight:800; font-size:11px; }
-.dest p,#goalMask,#autoSplit,#aiWhy,#eldBar,#trashZone,#speakPlan,#aiFill2,#resetDec2,#dispSummary,#fab,.tz-hint,#s5 { display:none!important; }
+.dest p,#goalMask,#autoSplit,#aiWhy,#eldBar,#trashZone,#speakPlan,#resetDec2,#dispSummary,#fab,.tz-hint { display:none!important; }
 .panel { padding:20px; border:3px solid var(--line); border-radius:0; background:#fff; box-shadow:var(--shadow); }
 .survey { grid-template-columns:minmax(180px,320px); }
 .field label { margin-bottom:8px; font-weight:800; }
@@ -182,4 +182,15 @@ body.lowvision #mapDock,body.lowvision .disposal-group,body.lowvision #packingGu
   #s3 .days-wrap { display:block; }
   #board .day-column,#board .leave-group .slots { max-height:none; overflow:visible; }
   .item,.packing-card { break-inside:avoid; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+}
+
+.comparison-options { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:10px 0; }
+.comparison-options button { padding:10px; font-size:12px; }
+#s3>.lead,#s4>.lead { max-width:80ch; }
+#s5 .plan-day p { overflow-wrap:anywhere; }
+@media print {
+ #s3 { display:none!important; }
+ #s5 { display:block!important; }
+ #s5 .no-print { display:none!important; }
+ .plan-day { break-inside:avoid; box-shadow:none; }
 }

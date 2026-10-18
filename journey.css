@@ -35,8 +35,7 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:3px soli
 .addbar { gap:8px; }
 #itemList { display:grid; grid-template-columns:repeat(auto-fill,minmax(152px,1fr)); gap:8px; align-items:stretch; }
 .item {
-  display:grid; grid-template-columns:minmax(0,1fr) auto; align-items:center; gap:8px;
-  width:100%; min-width:0; max-width:none; min-height:48px; padding:10px 12px;
+  display:block; width:100%; min-width:0; max-width:none; min-height:48px; padding:10px 12px;
   margin:0; border:3px solid var(--category,var(--line)); border-radius:0;
   background:var(--tint,var(--wash)); color:var(--ink); box-shadow:3px 3px 0 #141414;
   text-align:left; font-weight:700; font-size:13px; line-height:1.5; cursor:grab;
@@ -44,7 +43,9 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:3px soli
 .item:hover { filter:brightness(.97); }
 .item:active { cursor:grabbing; }
 .item.selected { outline:3px solid var(--brand); outline-offset:2px; }
-.item-name { min-width:0; overflow-wrap:anywhere; }
+.item-name { display:block; min-width:0; overflow-wrap:anywhere; }
+.item-name b { display:block; min-width:0; overflow-wrap:anywhere; }
+.item-name small { display:block; min-width:0; overflow-wrap:anywhere; }
 .place-emoji { font-size:17px; line-height:1; text-align:center; width:20px; }
 .item.fixed { cursor:pointer; background:#f4edda; border-color:#a7893a; }
 #arrangementNote { display:inline-block; margin:0 0 16px; padding:8px 12px; border:3px solid var(--brand); background:var(--wash); color:var(--brand); font-weight:800; font-size:13px; }
@@ -70,8 +71,22 @@ button:focus-visible,input:focus-visible,select:focus-visible { outline:3px soli
 .leave-group h4 { margin:0 0 8px; font-size:13px; font-weight:900; color:var(--brand); }
 #board .leave-group .slots { grid-template-columns:repeat(2,minmax(0,1fr)); max-height:208px; overflow:auto; padding:2px; }
 .empty-slot { grid-column:1/-1; display:grid; place-items:center; padding:14px 8px; min-height:48px; border:3px dashed #8a9986; font-size:12px; color:var(--muted); font-weight:700; }
-.fixed-strip { display:flex; gap:6px; flex-wrap:wrap; padding-top:4px; }
-#board .fixed-strip .item { display:block; width:auto; min-height:0; padding:4px 7px; border-width:2px; font-size:11px; font-weight:700; box-shadow:2px 2px 0 #141414; }
+/* 固定设施：标题独占一整行，物品按等宽网格排列（原来是 flex 让标题和物品混排，导致顺序错乱） */
+.fixed-strip {
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(150px,1fr));
+  gap:6px;
+  align-items:stretch;
+  padding-top:4px;
+}
+.fixed-strip h3 { grid-column:1/-1; margin:0 0 6px; font-size:13px; font-weight:900; }
+#board .fixed-strip .item {
+  display:block; width:100%; min-width:0; min-height:0; padding:6px 8px;
+  border-width:2px; font-size:11px; font-weight:700; box-shadow:2px 2px 0 #141414;
+}
+@media(max-width:520px){
+  .fixed-strip { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
 #pendingItems { padding:12px; background:#eeeee4; border:3px solid var(--line); box-shadow:3px 3px 0 #141414; }
 #pendingItems h3 { font-size:13px; font-weight:900; margin:0 0 8px; }
 #pendingItems .slots { display:grid; grid-template-columns:repeat(auto-fill,minmax(128px,1fr)); gap:8px; }
@@ -144,6 +159,24 @@ body.eld .item { font-size:18px; min-height:52px; }
 body.eld .disposal-actions button { font-size:15px; }
 body.lowvision .item,body.lowvision .disposal-card,body.lowvision .packing-card { color:#ff0!important; background:#141414!important; border-color:#ff0!important; box-shadow:none!important; }
 body.lowvision #mapDock,body.lowvision .disposal-group,body.lowvision #packingGuide { background:#141414; color:#ff0; border-color:#ff0; }
+/* Low vision: ensure all Step 3 board elements have dark bg + yellow text */
+body.lowvision .drop-col,body.lowvision .day-col,body.lowvision .buy-col,body.lowvision .leave-behind,
+body.lowvision .handle-col,body.lowvision .sell-col,body.lowvision .donate-col,body.lowvision .recycle-col,
+body.lowvision .pending-col,body.lowvision .leave-group,body.lowvision .fixed-strip,
+body.lowvision .pk-block,body.lowvision .pk-line,body.lowvision .pk-thumb,body.lowvision .pk-meta,
+body.lowvision .trash-group,body.lowvision .plan-check,body.lowvision .plan-day,
+body.lowvision .shop-match,body.lowvision .drop-empty,body.lowvision .loc-btn {
+  background:#141414!important; color:#ff0!important; border-color:#ff0!important; box-shadow:none!important;
+}
+body.lowvision .drop-col h3,body.lowvision .drop-col h4,body.lowvision .drop-col .v,body.lowvision .drop-col .count,
+body.lowvision .pk-meta b,body.lowvision .pk-meta small,body.lowvision .pk-title,body.lowvision .pk-note,
+body.lowvision .trash-group h4,body.lowvision .plan-check span,body.lowvision .plan-check small,
+body.lowvision .plan-day h3,body.lowvision .plan-day .vol,body.lowvision .shop-match b,body.lowvision .shop-match small {
+  color:#ff0!important;
+}
+body.lowvision .item-name b,body.lowvision .item-name small { color:#ff0!important; }
+body.lowvision .drop-empty { border-color:#ff0!important; }
+body.lowvision .loc-btn { background:#141414!important; color:#ff0!important; border-color:#ff0!important; }
 @media(max-width:1024px) {
   .topbar { flex-wrap:wrap; }
   .steps { order:3; width:100%; }
@@ -219,7 +252,7 @@ body.lowvision #mapDock,body.lowvision .disposal-group,body.lowvision #packingGu
 .pending-col { background:#fbf7e6; border-color:#b58a1f; margin-bottom:10px; }
 .loc-btn { margin-top:auto; padding:6px 8px; font-size:11px; font-weight:800; width:100%; background:#fff; }
 .item.fixed { opacity:.85; background:#ecebe2; }
-.item.handled b { display:flex; align-items:center; gap:4px; }
+.item.handled .item-name b { display:flex; align-items:center; gap:4px; flex-wrap:wrap; }
 
 /* =========================================================================
    每日紧凑打包（Moving Checklist）：sprite 切 5 面板，55×92
@@ -239,8 +272,15 @@ body.lowvision #mapDock,body.lowvision .disposal-group,body.lowvision #packingGu
 .pk-meta small { font-size:11px; color:var(--muted); overflow-wrap:anywhere; }
 .pk-note { margin:8px 0 0; font-size:10px; line-height:1.6; color:var(--muted); }
 .pk-none { font-size:12px; color:var(--muted); margin:0; }
-.plan-check { display:flex; align-items:flex-start; gap:8px; font-size:15px; padding:3px 0; cursor:pointer; }
-.plan-check input { margin-top:3px; }
+.plan-check { display:block; font-size:15px; padding:4px 0; cursor:pointer; min-width:0; max-width:100%; overflow-wrap:anywhere; }
+.plan-check input[type="checkbox"] { width:auto; height:auto; margin-right:8px; vertical-align:middle; padding:0; border:0; }
+.plan-check span { overflow-wrap:anywhere; }
+.plan-day { overflow-wrap:anywhere; min-width:0; max-width:100%; }
+.plan-day h3 { overflow-wrap:anywhere; }
+.pk-block { overflow-wrap:anywhere; min-width:0; max-width:100%; }
+.pk-meta { min-width:0; max-width:100%; }
+#planDays,#planTrash { overflow-wrap:anywhere; min-width:0; max-width:100%; }
+#planTrash > div { overflow-wrap:anywhere; }
 .trash-group { margin:14px 0; padding:10px 12px; border:2px solid var(--line); background:#fff; }
 .trash-group h4 { margin:0 0 6px; font-size:14px; font-weight:900; }
 .svc-links { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }

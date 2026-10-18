@@ -72,7 +72,7 @@ function card(it){
  c.ondblclick=()=>openItemDetails(it);
  c.title=jl('双击查看详情','Double-click for details','雙擊查看詳情');
  const tag=(it.bucket==='trash'&&it.handle)?' <span class="handle-tag">'+({sell:'💸',donate:'🎁',recycle:'♻️'}[it.handle])+'</span>':'';
- c.innerHTML='<b>'+nm(it)+tag+'</b><small>'+esc(it.size)+' · '+it.vol+'m³</small>';
+ c.innerHTML='<span class="item-name"><b>'+nm(it)+tag+'</b><small>'+esc(it.size)+' · '+it.vol+'m³</small></span>';
  return c;
 }
 
@@ -84,8 +84,11 @@ renderItems=function(){
   const el=document.createElement('div');
   el.className='item'+(it.fixed?' fixed':'');
   el.draggable=true;
+  el.dataset.id=it.id;
+  el.innerHTML='<span class="item-name"><b>'+nm(it)+(it.fixed?' <span class="handle-tag">🔧</span>':'')+'</b><small>'+esc(it.size)+' · '+it.vol+'m³</small></span>';
   el.ondragstart=e=>e.dataTransfer.setData('text',it.id);
-  el.innerHTML='<b>'+nm(it)+(it.fixed?' <span class="handle-tag">🔧</span>':'')+'</b><small>'+esc(it.size)+' · '+it.vol+'m³</small>';
+  el.title=jl('点击编辑','Click to edit','點擊編輯');
+  el.addEventListener('click',()=>openEditor(it));
   el.ondblclick=()=>openItemDetails(it);
   l.appendChild(el);
  });
@@ -288,9 +291,9 @@ renderPlan=function(){
 /* 服务入口链接（真实官方/平台，不编造门店） */
 function serviceLinks(handle){
  const links={
-  sell:[['Carousell','https://www.carousell.com.hk/'],['闲鱼','https://www.goofish.com/']],
-  donate:[['Salvation Army 救世军','https://www.salvationarmy.org.hk/']],
-  recycle:[['香港官方回收地图','https://www.wastereduction.gov.hk/zh-hk/recycling-map'],['绿在区区 Green@Community','https://www.wastereduction.gov.hk/zh-hk/']]
+  sell:[['Carousell','https://www.carousell.com.hk/'],[jl('闲鱼','Goofish','閒魚'),'https://www.goofish.com/']],
+  donate:[[jl('Salvation Army 救世军','Salvation Army','Salvation Army 救世軍'),'https://www.salvationarmy.org.hk/']],
+  recycle:[[jl('香港官方回收地图','HK official recycling map','香港官方回收地圖'),'https://www.wastereduction.gov.hk/zh-hk/recycling-map'],[jl('绿在区区 Green@Community','Green@Community','綠在區區 Green@Community'),'https://www.wastereduction.gov.hk/zh-hk/']]
  }[handle]||[];
  return links.map(([label,url])=>'<a target="_blank" rel="noopener" href="'+url+'">'+label+' ↗</a>').join(' ');
 }
@@ -340,8 +343,8 @@ function disposalLinks(it){
  const wrap=document.createElement('div');wrap.className='disposal-links';
  const links=[];
  if(it.handle==='sell')links.push(['Carousell','https://www.carousell.com.hk/']);
- if(it.handle==='donate')links.push(['救世军','https://www.salvationarmy.org.hk/']);
- if(it.handle==='recycle')links.push(['官方回收地图','https://www.wastereduction.gov.hk/zh-hk/recycling-map']);
+ if(it.handle==='donate')links.push([jl('救世军','Salvation Army','救世軍'),'https://www.salvationarmy.org.hk/']);
+ if(it.handle==='recycle')links.push([jl('官方回收地图','Official recycling map','官方回收地圖'),'https://www.wastereduction.gov.hk/zh-hk/recycling-map']);
  links.push(['Google Maps','https://www.google.com/maps/search/?api=1&query='+encodeURIComponent((it.name||'')+' '+(S.dest?jl('香港','Hong Kong','香港'):''))]);
  links.forEach(([label,url])=>{const a=document.createElement('a');a.className='dlink';a.target='_blank';a.rel='noopener';a.href=url;a.textContent=label+' ↗';wrap.append(a);});
  return wrap;
@@ -637,11 +640,15 @@ async function smartArrange(){
   }
   tEl.textContent=jl('正在唤醒 AI 服务…','Waking up the AI service…','正在喚醒 AI 服務…');
   const ready=await waitForApiReady(()=>{});
-  if(!ready){tEl.textContent=jl('AI 服务启动超时。当前安排已保留，可稍后重试或手动拖拽。','AI service startup timed out. Your plan is kept — retry later or drag manually.','AI 服務啟動逾時。當前安排已保留，可稍後重試或手動拖拽。');done();return;}
+  if(ready!=='ok'){
+   tEl.textContent=(ready==='blocked') ? ((typeof aiBlockedMsg==='function')?aiBlockedMsg():jl('此页面无法连接 AI 服务，请用线上版。','Cannot reach the AI service.','此頁面無法連線 AI 服務，請用線上版。')) : jl('AI 服务启动超时。当前安排已保留，可稍后重试或手动拖拽。','AI service startup timed out. Your plan is kept — retry later or drag manually.','AI 服務啟動逾時。當前安排已保留，可稍後重試或手動拖拽。');
+   done();return;
+  }
   const N=S.trips;
   const cfg=DAY_LOCS[S.dest?S.dest.id:'hsk']||DAY_LOCS.hsk;
   const payload={
    classify:true,
+   lang:LANG,
    dates:[...Array(N)].map((_,i)=>'Day '+(i+1)),
    context:{dest:t3(cfg.destinationName),goal:S.purpose||'phased'},
    items:S.items.map(it=>({id:it.id,name:nm(it),kind:it.kind,size:it.size,vol:it.vol,fixed:!!it.fixed}))
@@ -678,14 +685,31 @@ async function smartArrange(){
   S.trips=N;
   journey.arrangement='ai';journey.edited=false;
   renderBoard();
-  const reasons=j.items.filter(r=>r.reason).slice(0,14)
-   .map(r=>{const it=S.items.find(x=>x.id===r.id);return '· '+(it?nm(it):r.id)+'：'+r.reason;}).join('\n');
+  /* 后端 reason 固定回中文，非中文界面改为按 decision 生成对应语言的说明，避免中英混排 */
+  const locReason=r=>{
+   if(LANG==='zhHans')return r.reason||'';
+   if(r.decision==='fixed')return jl('固定设施，留在原处','Fixed fixture — stays in place','固定設施，留在原處');
+   if(r.decision==='buy')return jl('当地购买，不搬运','Buy locally — no need to move','當地購買，不搬運');
+   if(r.decision==='trash'){
+    if(r.handle==='sell')return jl('当地转卖','Resell locally','當地轉賣');
+    if(r.handle==='donate')return jl('捐赠出去','Donate','捐贈出去');
+    if(r.handle==='recycle')return jl('回收处理','Recycle','回收處理');
+    return jl('不搬走','Leave behind','不搬走');
+   }
+   return jl('安排到第 '+(r.day||1)+' 天','Scheduled to Day '+(r.day||1),'安排到第 '+(r.day||1)+' 天');
+  };
+  const sep=jl('：',': ','：');
+  const reasons=j.items.slice(0,14)
+   .map(r=>{const it=S.items.find(x=>x.id===r.id);return '· '+(it?nm(it):r.id)+sep+locReason(r);}).join('\n');
   const head=jl('AI 已完成分类与分天（可手动调整）：','AI finished classifying & scheduling (adjustable):','AI 已完成分類與分天（可手動調整）：');
   tEl.textContent=head+'\n'+reasons;
   if(document.body.classList.contains('lowvision'))speak(head.replace(/\n/g,' '));
   refreshMap();
  }catch(err){
-  tEl.textContent=jl('AI 安排失败，当前选择已保留。可重试，或直接拖拽手动分类。','AI planning failed. Your current choices are kept — retry or drag manually.','AI 安排失敗，當前選擇已保留。可重試，或直接拖拽手動分類。');
+  const net=/failed to fetch|network|load failed/i.test((err&&err.message)||'')||err.name==='TypeError';
+  tEl.textContent=net
+   ? ((typeof aiBlockedMsg==='function')?aiBlockedMsg():jl('此页面无法连接 AI 服务。','Cannot reach the AI service.','此頁面無法連線 AI 服務。'))
+   : jl('AI 安排失败，当前选择已保留。可重试，或直接拖拽手动分类。','AI planning failed. Your current choices are kept — retry or drag manually.','AI 安排失敗，當前選擇已保留。可重試，或直接拖拽手動分類。');
  }finally{done();}
 }
 const autoSplitBtn=document.getElementById('autoSplit');
@@ -756,11 +780,14 @@ applyLang=function(){
  journeyLabels();
  document.documentElement.lang={en:'en',zhHant:'zh-Hant',zhHans:'zh-Hans'}[LANG];
  document.body.classList.toggle('hant',LANG==='zhHant');
+ /* 语言按钮高亮：基类 applyLang 有这一步，覆盖时必须一并保留，否则点了「简」文字变了但按钮不变色 */
+ document.querySelectorAll('#langSwitch button').forEach(x=>x.classList.toggle('on',x.dataset.lang===LANG));
  document.querySelectorAll('[data-i18n]').forEach(el=>{const k=el.dataset.i18n;if(k in(I18N[LANG])||k in I18N.en)el.textContent=T(k);});
  const current=document.querySelector('.screen.on');
  if(current){const n=current.id;if(n==='s3')renderBoard();if(n==='s5')renderPlan();}
  renderItems();
 };
-/* 初始化：重新应用语言（注入五区/导航文案），再渲染看板 */
-applyLang();
-renderBoard();
+/* 初始化：重新应用语言（注入五区/导航文案），再渲染看板
+   分开兜底：看板渲染失败不影响第一步内容展示 */
+try{applyLang();}catch(e){console.error('journey applyLang',e);}
+try{renderBoard();}catch(e){console.error('journey renderBoard',e);}

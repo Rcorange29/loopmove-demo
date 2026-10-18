@@ -64,7 +64,10 @@ h1 em{font-style:normal;background:var(--brand);color:#fff;padding:0 10px;}
 .dest p{margin:0;font-size:12px;color:var(--muted);}
 .dest .tag{font-family:var(--mono);font-size:10px;font-weight:700;display:inline-block;border:2px solid var(--line);padding:2px 7px;margin-bottom:10px;background:var(--wash);}
 .dest.sel{background:var(--wash);box-shadow:4px 4px 0 var(--brand);}
-.dest.sel::after{content:"✓ 已选";float:right;font-weight:900;color:var(--brand);}
+.dest.sel::after{float:right;font-weight:900;color:var(--brand);}
+html[lang="en"] .dest.sel::after{content:"✓ Selected";}
+html[lang="zh-Hant"] .dest.sel::after{content:"✓ 已選";}
+html[lang="zh-Hans"] .dest.sel::after{content:"✓ 已选";}
 
 /* survey */
 .survey{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px;}
@@ -433,7 +436,7 @@ body.eld .map-legend .lg{font-size:14px;}
 }
 @media print{#fab,.topbar,.row button,.no-print{display:none!important;}.screen{display:block!important;}.map-card{display:none!important;}}
 </style>
-<link rel="stylesheet" href="journey.css?v=20261018-final2">
+<link rel="stylesheet" href="journey.css?v=20261018-final3">
 </head>
 <body>
 <div class="wrap">
@@ -629,7 +632,9 @@ body.eld .map-legend .lg{font-size:14px;}
 
 <!-- RECOGNIZING MODAL -->
 <div id="recMask">
-  <div class="modal" style="width:min(380px,100%);text-align:center">
+  <div class="modal" style="width:min(380px,100%);text-align:center;position:relative">
+    <button type="button" id="recClose" aria-label="关闭" title="关闭 / Close / 關閉"
+      style="position:absolute;top:8px;right:8px;width:34px;height:34px;padding:0;border:3px solid var(--ink);background:#fff;color:var(--ink);font-size:20px;font-weight:900;line-height:26px;cursor:pointer;box-shadow:3px 3px 0 var(--ink);z-index:3">×</button>
     <div style="padding:26px 22px">
       <div id="recProgress">
         <div id="recSpin" style="font-size:34px;animation:spin 1s linear infinite;margin-bottom:14px">◍</div>
@@ -648,6 +653,7 @@ body.eld .map-legend .lg{font-size:14px;}
           <button class="primary" id="recRetryBtn" data-i18n="recRetryBtn">重试识别</button>
           <button class="ghost" id="recKeepBtn" data-i18n="recKeepBtn">保留照片，手动添加</button>
         </div>
+        <button class="ghost" id="recCancelBtn" data-i18n="recCancelBtn" style="width:100%;margin-top:10px">取消，关闭</button>
       </div>
     </div>
   </div>
@@ -817,8 +823,22 @@ const TILE_ESRI=()=>L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/ser
 function t3(o){return LANG==='en'?(o.en||o.hans||''):(LANG==='zhHant'?(o.hant||o.hans||''):(o.hans||o.hant||''));}
 function loadLeaflet(cb){
  if(window.L){cb();return;}
- const c=document.createElement('link');c.rel='stylesheet';c.href='assets/leaflet/leaflet.css';document.head.appendChild(c);
- const s=document.createElement('script');s.src='assets/leaflet/leaflet.js';s.onload=cb;s.onerror=()=>{const b=document.getElementById('mapBox');if(b)b.innerHTML='<div style="padding:40px;text-align:center;font-weight:800;color:var(--muted)">'+T('mapFail')+'</div>';};
+ const CSS_LOCAL='assets/leaflet/leaflet.css',CSS_CDN='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+ const JS_LOCAL='assets/leaflet/leaflet.js',JS_CDN='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+ const addCss=h=>{const c=document.createElement('link');c.rel='stylesheet';c.href=h;document.head.appendChild(c);};
+ addCss(CSS_LOCAL);
+ /* 单文件版/文件被单独拷走时 assets 不存在：自动回退到 CDN，避免地图直接失效 */
+ const s=document.createElement('script');
+ s.src=JS_LOCAL;
+ s.onload=cb;
+ s.onerror=()=>{
+  addCss(CSS_CDN);
+  const s2=document.createElement('script');
+  s2.src=JS_CDN;
+  s2.onload=()=>{if(!window.L){const b=document.getElementById('mapBox');if(b)b.innerHTML='<div style="padding:40px;text-align:center;font-weight:800;color:var(--muted)">'+T('mapFail')+'</div>';return;}cb();};
+  s2.onerror=()=>{const b=document.getElementById('mapBox');if(b)b.innerHTML='<div style="padding:40px;text-align:center;font-weight:800;color:var(--muted)">'+T('mapFail')+'</div>';};
+  document.head.appendChild(s2);
+ };
  document.head.appendChild(s);
 }
 function renderLegend(){
@@ -995,7 +1015,7 @@ function renderItems(){
  const l=document.getElementById('itemList');l.innerHTML='';
  S.items.forEach(it=>{
   const c=document.createElement('div');c.className='item';c.draggable=true;c.dataset.id=it.id;
-  c.innerHTML=`<b>${nm(it)}</b><small>${it.size} · ${it.vol}m³</small>`;
+  c.innerHTML=`<span class="item-name"><b>${nm(it)}</b><small>${it.size} · ${it.vol}m³</small></span>`;
   c.title=T('editTip');
   c.addEventListener('dragstart',e=>e.dataTransfer.setData('text',it.id));
   c.addEventListener('click',()=>openEditor(it));
@@ -1023,7 +1043,7 @@ document.getElementById('addText').onclick=()=>{const i=document.getElementById(
 document.getElementById('itemName').addEventListener('keydown',e=>{if(e.key==='Enter'){document.getElementById('addText').click();}});
 document.getElementById('addVoice').onclick=()=>{
  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
- if(!SR){addItem(prompt('语音不可用，直接打字吧（逗号分隔）：')||'');return;}
+ if(!SR){addItem(prompt(T('s2voiceFallback'))||'');return;}
  const r=new SR();r.lang='zh-CN';r.interimResults=false;
  r.onresult=e=>{e.results[0][0].transcript.split(/[,，、\s]+/).filter(Boolean).forEach(n=>addItem(n));};
  r.start();
@@ -1051,20 +1071,29 @@ function compressImage(file,maxEdge,quality){
   img.src=url;
  });
 }
-/* 唤醒可能休眠的 Render 免费实例，最多约 100 秒 */
+/* 唤醒可能休眠的 Render 免费实例。
+   返回 'ok' | 'blocked' | 'timeout'
+   关键：如果请求在很短时间内就抛网络错误（CORS 被拒 / 域名不可达），
+   说明不是"冷启动"，继续等 100 秒毫无意义——立刻返回 blocked，让用户马上看到真实原因。 */
 async function waitForApiReady(onTick){
  const MAX=100000,t0=Date.now();
  while(Date.now()-t0<MAX){
+  const started=Date.now();
   try{
    const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),8000);
    const r=await fetch(API_BASE+'/api/health',{signal:ctrl.signal,cache:'no-store'});
    clearTimeout(t);
-   if(r.ok){const j=await r.json().catch(()=>({}));if(j.status==='ok')return true;}
-  }catch(e){/* 冷启动中，继续等待 */}
+   if(r.status===403)return 'blocked';           /* ORIGIN_NOT_ALLOWED */
+   if(r.ok){const j=await r.json().catch(()=>({}));if(j.status==='ok')return 'ok';}
+  }catch(e){
+   /* AbortError = 8 秒超时，属于冷启动中的正常现象，继续等；
+      其它错误（TypeError: Failed to fetch）= 网络层直接被拦，快速失败 */
+   if(e.name!=='AbortError'&&Date.now()-started<3000)return 'blocked';
+  }
   onTick&&onTick(Math.round((Date.now()-t0)/1000));
   await recSleep(4000);
  }
- return false;
+ return 'timeout';
 }
 /* 识别失败但保留照片：只显示原图，用户可继续手动添加 */
 function renderKeptPhoto(url){
@@ -1073,35 +1102,48 @@ function renderKeptPhoto(url){
  box.innerHTML='<div class="eyebrow" style="margin-top:0">'+T('recKeptTitle')+'</div><div class="anno-wrap"><img src="'+url+'"></div>';
 }
 let recognizing=false,lastPhotoFile=null;
+/* 每次识别一个 runId；用户点关闭/取消时 runId++，所有后续异步回调立即作废 */
+let recRun=0;
+function closeRecModal(){
+ recRun++;
+ const m=document.getElementById('recMask');
+ if(m)m.classList.remove('show');
+}
 async function runRecognition(file){
+ const myRun=++recRun;
+ const alive=()=>myRun===recRun;
  const mask=document.getElementById('recMask');
  const progress=document.getElementById('recProgress'),fail=document.getElementById('recFail');
  const step=document.getElementById('recStep'),bar=document.getElementById('recBar');
  const failMsg=document.getElementById('recFailMsg'),failImg=document.getElementById('recFailImg');
  progress.style.display='block';fail.style.display='none';
  mask.classList.add('show');
- const setFail=msg=>{progress.style.display='none';fail.style.display='block';failMsg.textContent=msg;};
+ const setFail=msg=>{if(!alive())return;progress.style.display='none';fail.style.display='block';failMsg.textContent=msg;};
  try{
   bar.style.width='6%';step.textContent=T('recCompress');
   let original;
   try{ original=await fileToDataURL(file); }
-  catch(e){ mask.classList.remove('show');bAlert(T('recDecode'));return; }
+  catch(e){ if(alive()){mask.classList.remove('show');bAlert(T('recDecode'));}return; }
   let compressed;
   try{ compressed=await compressImage(file,1280,0.8); }
-  catch(e){ mask.classList.remove('show');bAlert(T('recDecode'));return; }
+  catch(e){ if(alive()){mask.classList.remove('show');bAlert(T('recDecode'));}return; }
+  if(!alive())return;
   if(IS_STATIC){ mask.classList.remove('show');bAlert(T('recStatic'));return; }
   bar.style.width='15%';step.textContent=T('recWake');
-  const ready=await waitForApiReady(sec=>{step.textContent=TF('recWakeWait',{sec});});
-  if(!ready){failImg.src=original;setFail(T('recWakeTimeout'));return;}
+  const ready=await waitForApiReady(sec=>{if(alive())step.textContent=TF('recWakeWait',{sec});});
+  if(!alive())return;
+  if(ready!=='ok'){failImg.src=original;setFail(ready==='blocked'?aiBlockedMsg():T('recWakeTimeout'));return;}
   let ok=false,j=null,lastMsg=T('recFailGeneric');
   for(let attempt=1;attempt<=2&&!ok;attempt++){
+   if(!alive())return;
    try{
     bar.style.width=attempt===1?'55%':'72%';step.textContent=T('recAI');
     const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),70000);
     let res;
     try{
-     res=await fetch(API_BASE+'/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:compressed}),signal:ctrl.signal});
+     res=await fetch(API_BASE+'/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:compressed,lang:LANG}),signal:ctrl.signal});
     }finally{clearTimeout(to);}
+    if(!alive())return;
     j=await res.json().catch(()=>null);
     if(!res.ok){const err=new Error((j&&(j.message||j.error))||'AI recognition failed');err.status=res.status;throw err;}
     if(j.items&&j.items.length){ok=true;}
@@ -1110,6 +1152,7 @@ async function runRecognition(file){
      if(attempt===1){step.textContent=T('recRetry');bar.style.width='45%';await recSleep(1200);}
     }
    }catch(err){
+    if(!alive())return;
     const status=err.status||0;
     const retryable=status>=500||status===504||status===0||err.name==='AbortError'||/failed to fetch|network|load failed/i.test(err.message||'');
     lastMsg=err.name==='AbortError'?T('recTimeout'):(status>=500?T('recBusy'):T('recFailGeneric'));
@@ -1122,6 +1165,7 @@ async function runRecognition(file){
    if(document.body.classList.contains('lowvision'))speak(TF('speakDone',{n:j.items.length}));
    const before=S.items.length;
    setTimeout(()=>{
+    if(!alive())return;
     mask.classList.remove('show');
     j.items.forEach(it=>addItem(it.name,original,{size:it.size,vol:it.vol,kind:it.kind,ch:it.channel,bbox:it.bbox,fixed:it.fixed}));
     renderRecognized(original,S.items.slice(before));
@@ -1151,9 +1195,16 @@ document.getElementById('recRetryBtn').onclick=()=>{
 };
 document.getElementById('recKeepBtn').onclick=()=>{
  const f=lastPhotoFile;
- document.getElementById('recMask').classList.remove('show');
+ closeRecModal();
  if(f)fileToDataURL(f).then(renderKeptPhoto).catch(()=>{});
 };
+/* 直接关闭识别弹窗：右上角 ×、底部「取消」、点遮罩、按 Esc 都能关 */
+document.getElementById('recClose').onclick=closeRecModal;
+document.getElementById('recCancelBtn').onclick=closeRecModal;
+document.getElementById('recMask').addEventListener('click',e=>{if(e.target.id==='recMask')closeRecModal();});
+document.addEventListener('keydown',e=>{
+ if(e.key==='Escape'&&document.getElementById('recMask').classList.contains('show'))closeRecModal();
+});
 function loadSeed(){
  S.items=SEED.map(s=>{
   const p=guessPrice(s.name);
@@ -1163,7 +1214,7 @@ function loadSeed(){
  document.getElementById('recognizeBox').style.display='block';
 }
 document.getElementById('loadExample').onclick=()=>{
- if(S.items.length)bConfirm(LANG==='en'?'Items already exist — replace with sample?':'已有物品，用示例覆盖？',loadSeed);
+ if(S.items.length)bConfirm(T('s2replace'),loadSeed);
  else loadSeed();
 };
 /* 载入示例后自动播报（视障版） */
@@ -1187,8 +1238,8 @@ mapFurDesc:'Buy beds, desks and large items here.',mapMallDesc:'One-stop daily e
  s1cta:'Start organising my things →',
  s2eyebrow:'Step 2 · List your items',s2h1a:'This room,',s2h1b:'what\'s inside?',
  s2lead:'Type, speak, or take a photo. I\'ll note names and estimate size and volume. Rough is fine — no need to finish at once.',
- s2ph:'e.g. mattress, pillows, two chairs…',s2add:'＋ Add',s2voice:'🎤 Voice',s2photo:'📷 Photo',
- s2example:'Start with sample room (20 items)',s2ai:'AI Recognition Results',s2to3:'Sort these by day →',
+ s2ph:'e.g. mattress, pillows, two chairs…',s2add:'＋ Add',s2voice:'🎤 Voice',s2photo:'📷 Photo',s2voiceFallback:'Voice not available — type items (comma-separated):',
+ s2example:'Start with sample room (20 items)',s2ai:'AI Recognition Results',s2to3:'Sort these by day →',s2replace:'Items already exist — replace with sample?',
  s3eyebrow:'Step 3 · Prioritise by day',s3h1a:'What do you need',s3h1b:' on day one?',
  s3lead:'Drag cards to a day. Day 1 is for immediate needs; later days follow your trip count. Trash the rest.',
  s3why:'🤖 Why AI arranged it this way',s3read:'🔊 Read aloud',s3back:'← Back to items',s3ai:'⚡ AI Auto-sort',s3to4:'Dispose of unwanted items →',
@@ -1240,12 +1291,18 @@ mapFurDesc:'Buy beds, desks and large items here.',mapMallDesc:'One-stop daily e
  noteWarn:'⚠️ Notice',noteOK:'Got it',noteDecide:'You decide',noteNo:'Cancel',noteYes:'OK',
  recUpload:'Uploading photo…',recAI:'AI is looking at the photo…',recList:'Organising the item list…',recDone:'Done!',recRetry:'Couldn\'t see it, trying again…',
  recStatic:'This web demo has no AI recognition service (photo recognition works in the local version). Tap "Start with sample room" for the full demo.',
+ mapFail:'Map could not load. Please check your connection and try again.',
  recCompress:'Compressing the photo…',recWake:'Waking up the AI service…',recWakeWait:'Starting the server (first use can take a minute)… {sec}s',
  recWakeTimeout:'The AI service is still starting. Please retry in a moment — your photo is kept.',
  recDecode:'Could not read this image. Please choose another photo.',recTimeout:'Recognition timed out. Please retry.',
  recBusy:'The AI service is busy. Please retry.',recFailGeneric:'Recognition failed. Please retry or add the items manually.',
  recEmpty:'No items were spotted in this photo. You can retry or add items manually.',
  recFailTitle:'Recognition did not succeed',recRetryBtn:'Retry recognition',recKeepBtn:'Keep photo & add manually',recKeptTitle:'Photo kept — add items manually',
+ recCancelBtn:'Cancel & close',
+ recBlocked:'Cannot reach the AI service from this page. AI needs the online version (rcorange29.github.io/loopmove-demo). Everything else still works.',
+ recOffline:'The AI service is temporarily unreachable. Please retry in a moment — your items are safe.',
+ planBlocked:'Cannot reach the AI service from this page. AI needs the online version (rcorange29.github.io/loopmove-demo). Your plan above is already generated locally.',
+ planOffline:'The AI service is temporarily unreachable. Please retry in a moment — the plan above is already generated locally.',
  planStatic:'Web demo: AI notes unavailable (works locally). The plan is still generated by local rules.',
  noItems:'Add a few items first, or tap "Start with sample room"',
  aiWhyFast:'Sorted "move in fast": Day 1 gets {d1} — things you use the moment you arrive, so you can sleep, wash and work. The rest follow by need; decor and books go last.',
@@ -1283,8 +1340,8 @@ mapFurDesc:'可買床架、書桌等大件。',mapMallDesc:'一站式補足日�
  s1cta:'開始整理我的物品 →',
  s2eyebrow:'Step 2 · 錄入物品',s2h1a:'這一間房，',s2h1b:'有哪些東西？',
  s2lead:'打字、說話、拍照都行。我會記下名字、估個尺寸和體積。可以先存個大概，不用一次錄完。',
- s2ph:'例如：床墊、枕頭、兩把椅子…',s2add:'＋ 添加',s2voice:'🎤 語音',s2photo:'📷 拍照',
- s2example:'先用示例房間（20件）',s2ai:'AI 識別結果',s2to3:'分天整理這些東西 →',
+ s2ph:'例如：床墊、枕頭、兩把椅子…',s2add:'＋ 添加',s2voice:'🎤 語音',s2photo:'📷 拍照',s2voiceFallback:'語音不可用，直接打字吧（逗號分隔）：',
+ s2example:'先用示例房間（20件）',s2ai:'AI 識別結果',s2to3:'分天整理這些東西 →',s2replace:'已有物品，用示例覆蓋？',
  s3eyebrow:'Step 3 · 按緊急程度分天',s3h1a:'哪些',s3h1b:'當天就要用？',
  s3lead:'把卡片拖到對應天。Day1 馬上要用，後面幾天按趟數排，越往後越不急。不要的丟進垃圾桶。',
  s3why:'🤖 AI 為什麼這麼分',s3read:'🔊 朗讀',s3back:'← 返回改物品',s3ai:'⚡ AI 自動分天',s3to4:'處理不搬的東西 →',
@@ -1341,7 +1398,13 @@ mapFurDesc:'可買床架、書桌等大件。',mapMallDesc:'一站式補足日�
  recBusy:'AI 服務忙碌，請重試。',recFailGeneric:'識別失敗，請重試或手動添加物品。',
  recEmpty:'這張照片沒有辨識到物品，可重試或手動添加。',
  recFailTitle:'這次沒識別成功',recRetryBtn:'重試識別',recKeepBtn:'保留照片，手動添加',recKeptTitle:'照片已保留，請手動添加',
+ recCancelBtn:'取消，關閉',
+ recBlocked:'此頁面無法連線 AI 服務。AI 功能需使用線上版（rcorange29.github.io/loopmove-demo），其他功能不受影響。',
+ recOffline:'AI 服務暫時無法連線，請稍後再試；你已輸入的物品不會遺失。',
+ planBlocked:'此頁面無法連線 AI 服務。AI 功能需使用線上版（rcorange29.github.io/loopmove-demo），上方計劃已用本地規則生成。',
+ planOffline:'AI 服務暫時無法連線，請稍後再試；上方計劃已用本地規則生成。',
  recStatic:'網頁演示版沒有 AI 識別服務（拍照識別只在本地版可用）。請點「先用示例房間」看完整演示。',
+ mapFail:'地圖載入失敗，請檢查網絡後重試。',
  planStatic:'網頁演示版暫不提供 AI 說明（本地版可用）。計劃已按本地規則生成，功能不受影響。',
  noItems:'先加幾樣東西，或點「先用示例房間」',
  aiWhyFast:'按「馬上要住」分：第一天（Day 1）先把 {d1} 這類當天就要用的運過去——到了就能睡、能洗漱、能辦公。剩下的按需要順序排後面幾天，重要的先到，裝飾和書籍這類放到後面，不用急。',
@@ -1379,8 +1442,8 @@ mapFurDesc:'可买床架、书桌等大件。',mapMallDesc:'一站式补足日�
  s1cta:'开始整理我的物品 →',
  s2eyebrow:'Step 2 · 录入物品',s2h1a:'这一间房，',s2h1b:'有哪些东西？',
  s2lead:'打字、说话、拍照都行。我会记下名字、估个尺寸和体积。可以先存个大概，不用一次录完。',
- s2ph:'例如：床垫、枕头、两把椅子…',s2add:'＋ 添加',s2voice:'🎤 语音',s2photo:'📷 拍照',
- s2example:'先用示例房间（20件）',s2ai:'AI 识别结果',s2to3:'分天整理这些东西 →',
+ s2ph:'例如：床垫、枕头、两把椅子…',s2add:'＋ 添加',s2voice:'🎤 语音',s2photo:'📷 拍照',s2voiceFallback:'语音不可用，直接打字吧（逗号分隔）：',
+ s2example:'先用示例房间（20件）',s2ai:'AI 识别结果',s2to3:'分天整理这些东西 →',s2replace:'已有物品，用示例覆盖？',
  s3eyebrow:'Step 3 · 按紧急程度分天',s3h1a:'哪些',s3h1b:'当天就要用？',
  s3lead:'把卡片拖到对应天。Day1 马上要用，后面几天按趟数排，越往后越不急。不要的丢进垃圾桶。',
  s3why:'🤖 AI 为什么这么分',s3read:'🔊 朗读',s3back:'← 返回改物品',s3ai:'⚡ AI 自动分天',s3to4:'处理不搬的东西 →',
@@ -1437,7 +1500,13 @@ mapFurDesc:'可买床架、书桌等大件。',mapMallDesc:'一站式补足日�
  recBusy:'AI 服务忙碌，请重试。',recFailGeneric:'识别失败，请重试或手动添加物品。',
  recEmpty:'这张照片没有识别到物品，可重试或手动添加。',
  recFailTitle:'这次没识别成功',recRetryBtn:'重试识别',recKeepBtn:'保留照片，手动添加',recKeptTitle:'照片已保留，请手动添加',
+ recCancelBtn:'取消，关闭',
+ recBlocked:'此页面无法连接 AI 服务。AI 功能需使用线上版（rcorange29.github.io/loopmove-demo），其他功能不受影响。',
+ recOffline:'AI 服务暂时无法连接，请稍后再试；你已输入物品不会丢失。',
+ planBlocked:'此页面无法连接 AI 服务。AI 功能需使用线上版（rcorange29.github.io/loopmove-demo），上方计划已用本地规则生成。',
+ planOffline:'AI 服务暂时无法连接，请稍后再试；上方计划已用本地规则生成。',
  recStatic:'网页演示版没有 AI 识别服务（拍照识别只在本地版可用）。请点「先用示例房间」看完整演示。',
+ mapFail:'地图加载失败，请检查网络后重试。',
  planStatic:'网页演示版暂不提供 AI 说明（本地版可用）。计划已按本地规则生成，功能不受影响。',
  noItems:'先加几样东西，或点「先用示例房间」',
  aiWhyFast:'按「马上要住」分：第一天（Day 1）先把 {d1} 这类当天就要用的运过去——到了就能睡、能洗漱、能办公。剩下的按需要顺序排后面几天，重要的先到，装饰和书籍这类放到后面，不用急。',
@@ -1463,7 +1532,13 @@ mapFurDesc:'可买床架、书桌等大件。',mapMallDesc:'一站式补足日�
  cfNew:'新加入',recTitle:'AI 正在识别物品',recNote:'首次识别约需 1–2 分钟，请保持页面打开',
 }
 };
-let LANG=localStorage.getItem('lm-lang')||'en';
+/* 安全存储：部分环境（沙箱 iframe / 禁用 Cookie / 隐私模式）访问 localStorage 会抛 SecurityError，
+   这里统一兜底，避免整个脚本因此中断导致白屏 */
+const LS={
+ get(k){try{return localStorage.getItem(k);}catch(e){return null;}},
+ set(k,v){try{localStorage.setItem(k,v);}catch(e){}}
+};
+let LANG=LS.get('lm-lang')||'en';
 const T=k=>{const d=I18N[LANG]||I18N.en;return (k in d)?d[k]:k;};
 const TF=(k,o)=>String(T(k)).replace(/\{(\w+)\}/g,(m,x)=>o[x]!==undefined?o[x]:m);
 function nm(i){if(i&&i._key){const s0=SEED.find(x=>x.name===i._key);if(s0)return LANG==='en'?(s0.en||i._key):(LANG==='zhHant'?(s0.hant||i._key):i._key);}return i?i.name:'';}
@@ -1491,7 +1566,7 @@ function rerenderAll(){
  document.getElementById('tripsHint').textContent=TF('triphint',{n:S.trips,p:(100/S.trips).toFixed(0)})||S.trips+'';
 }
 document.querySelectorAll('#langSwitch button').forEach(b=>{
- b.onclick=()=>{LANG=b.dataset.lang;localStorage.setItem('lm-lang',LANG);applyLang();rerenderAll();};
+ b.onclick=()=>{LANG=b.dataset.lang;LS.set('lm-lang',LANG);applyLang();rerenderAll();};
 });
 
 /* ---------- 新粗野风确认/提示弹窗（替代原生 confirm/alert） ---------- */
@@ -1551,7 +1626,7 @@ function renderBoard(){
     slot.innerHTML='';
     S.items.filter(i=>i.bucket===k).forEach(it=>{
       const c=document.createElement('div');c.className='item'+(k==='trash'?' trash':'');c.draggable=true;c.dataset.id=it.id;
-      c.innerHTML=`<b>${nm(it)}</b><small>${it.size} · ${it.vol}m³</small>`;
+      c.innerHTML=`<span class="item-name"><b>${nm(it)}</b><small>${it.size} · ${it.vol}m³</small></span>`;
       c.addEventListener('dragstart',e=>e.dataTransfer.setData('text',it.id));
       c.tabIndex=0;
       c.setAttribute('aria-label',TF('ariaItem',{name:nm(it),size:it.size||'',vol:it.vol||0,d:(k==='trash'?T('selTrash'):k.replace('day',''))}));
@@ -1729,20 +1804,66 @@ document.getElementById('autoSplit').onclick=()=>{
   .then(r=>r.json()).then(j=>{if(j.text)typeText(tEl,j.text);})
   .catch(()=>{});
 };
-/* AI 生成搬家说明 */
+/* 本地生成的搬家说明：后端目前不跟随界面语言（永远回中文），
+   英文/繁體界面若拿到中文文本，改用本地文案，避免中英混排 */
+function localPlanText(){
+ const N=S.trips||1;
+ const move=S.items.filter(i=>i.bucket!=='trash');
+ const dest=S.dest?T('d_'+S.dest.id):'—';
+ const lines=[];
+ if(LANG==='en'){
+  lines.push('Moving to '+dest+' in '+N+' trip'+(N>1?'s':'')+'.');
+  for(let d=1;d<=N;d++){
+   const its=move.filter(i=>i.bucket==='day'+d);
+   const v=its.reduce((a,i)=>a+i.vol,0);
+   const names=its.slice(0,6).map(i=>nm(i)).join(', ')+(its.length>6?', …':'');
+   lines.push('Day '+d+' — '+its.length+' item'+(its.length===1?'':'s')+', '+v.toFixed(2)+' m³'+(its.length?': '+names:''));
+  }
+  return lines.join('\n');
+ }
+ const T2=(h,p)=>LANG==='zhHant'?p:h;
+ lines.push(T2('搬去'+dest+'，共 '+N+' 趟。','搬去'+dest+'，共 '+N+' 趟。'));
+ for(let d=1;d<=N;d++){
+  const its=move.filter(i=>i.bucket==='day'+d);
+  const v=its.reduce((a,i)=>a+i.vol,0);
+  const names=its.slice(0,6).map(i=>nm(i)).join('、')+(its.length>6?'…':'');
+  lines.push(T2('第 '+d+' 天 — '+its.length+' 件，'+v.toFixed(2)+' 立方米'+(its.length?'：'+names:''),
+                '第 '+d+' 天 — '+its.length+' 件，'+v.toFixed(2)+' 立方米'+(its.length?'：'+names:'')));
+ }
+ return lines.join('\n');
+}
+const hasCJK=s=>/[\u4e00-\u9fff]/.test(s||'');
+/* 判断当前是否跑在官方线上域名：同样的连不上，提示语要不一样
+   （线上版说"请稍后重试"，本地版说"请改用线上版"） */
+const AI_OFFICIAL=/\.github\.io$/i.test(location.hostname);
+function aiBlockedMsg(isPlan){
+ if(AI_OFFICIAL)return T(isPlan?'planOffline':'recOffline');
+ return T(isPlan?'planBlocked':'recBlocked');
+}
+
 document.getElementById('genPlan').onclick=async e=>{ const box=document.getElementById('aiPlan');
  box.innerHTML='<span class="ai-loading">'+T('genLoading')+'</span>';
  if(IS_STATIC){ typeText(box,T('planStatic')); return; }
  try{
   const res=await fetch(API_BASE+'/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-   dest:S.dest||'', items:S.items.filter(i=>i.bucket!=='trash').map(i=>({name:i.name,vol:i.vol,kind:i.kind,ch:i.ch}))
+   lang:LANG,dest:S.dest||'', items:S.items.filter(i=>i.bucket!=='trash').map(i=>({name:nm(i),vol:i.vol,kind:i.kind,ch:i.ch}))
   }),signal:AbortSignal.timeout(45000)});
-  const j=await res.json();
-  if(!res.ok)throw new Error(j.message||j.error||'AI plan failed');
-  typeText(box, j.text||'(failed, try again later)');
- }catch(err){ typeText(box,err&&err.message?err.message:T('planStatic')); }
-};
-document.getElementById('back3').onclick=()=>go(3);
+  const j=await res.json().catch(()=>null);
+  if(!res.ok){
+   /* 403 ORIGIN_NOT_ALLOWED = 当前页面来源不在后端白名单 */
+   if(res.status===403){typeText(box,aiBlockedMsg(true));return;}
+   throw new Error((j&&(j.message||j.error))||'AI plan failed');
+  }
+  const txt=(j&&j.text)||'';
+  /* 后端不跟随界面语言：英文界面若拿回中文正文，改用本地生成的英文说明 */
+  if(txt&&LANG!=='zhHans'&&hasCJK(txt)){typeText(box,localPlanText());return;}
+  typeText(box, txt||localPlanText());
+ }catch(err){
+  /* 网络层被拦（CORS / 断网）时给出可读原因，而不是裸的 Failed to fetch */
+  const net=/failed to fetch|network|load failed/i.test((err&&err.message)||'')||err.name==='TypeError';
+  typeText(box, net?aiBlockedMsg(true):((err&&err.message)||T('planStatic')));
+ }
+};document.getElementById('back3').onclick=()=>go(3);
 
 /* ---------- FAB + disposal modal ---------- */
 function renderModal(){ if(document.body.classList.contains('lowvision'))setTimeout(()=>speak(TF('speakS4',{n:S.items.filter(i=>i.bucket==='trash').length})),300);
@@ -1881,7 +2002,7 @@ function renderPlan(){ if(document.body.classList.contains('lowvision'))setTimeo
 }
 /* 无障碍：朗读按钮 + 求助 */
 document.getElementById('speakWhy').onclick=()=>{const t=document.getElementById('aiWhyText').innerText;const s2=document.getElementById('aiSuggestBox').innerText;speak((t+'. '+s2).replace(/[🔊📢▍]/g,''));};
-document.getElementById('speakPlan').onclick=()=>{const p=document.getElementById('aiPlan');speak(p.innerText.replace('生成一段给我的搬家说明','').replace(/[🔊📢▍]/g,''));};
+document.getElementById('speakPlan').onclick=()=>{const p=document.getElementById('aiPlan');speak(p.innerText.replace(T('s5gen'),'').replace(/[🔊📢▍]/g,''));};
 document.getElementById('helpBtn').onclick=()=>{
  const box=document.getElementById('noteBox');
  box.innerHTML='<div style="padding:20px 22px;min-width:320px">'
@@ -1905,12 +2026,13 @@ document.querySelectorAll('#accSwitch button').forEach(b=>{
   if(m==='elder'){speak(T('eldOn'));}
  };
 });
-/* 启动：默认英文 + 标准版选中 + 语言按钮高亮 */
-applyLang();
-buildDest();
-buildGoals();
-document.querySelector('#accSwitch button[data-acc=""]').classList.add('on');
+/* 启动：默认英文 + 标准版选中 + 语言按钮高亮
+   每一步单独兜底：任一模块出错也不会导致整页空白 */
+try{applyLang();}catch(e){console.error('applyLang',e);}
+try{buildDest();}catch(e){console.error('buildDest',e);}
+try{buildGoals();}catch(e){console.error('buildGoals',e);}
+try{document.querySelector('#accSwitch button[data-acc=""]').classList.add('on');}catch(e){}
 </script>
-<script src="journey.js?v=20261018-final3"></script>
+<script src="journey.js?v=20261018-final4"></script>
 </body>
 </html>

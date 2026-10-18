@@ -699,6 +699,18 @@ go=function(n){
 };
 
 /* s5 导出 TXT 按钮 */
+// The four-step journey replaces the hidden legacy goal dialog.
+function openJourneyStep(n){
+ if(n!==1&&!S.dest){go(1);return;}
+ if((n===3||n===5)&&!S.items.length){bAlert(T('noItems'));return;}
+ go(n);
+}
+document.getElementById('to3').onclick=()=>openJourneyStep(3);
+document.getElementById('to4').onclick=()=>openJourneyStep(5);
+document.querySelectorAll('.steps [data-step]').forEach(button=>{
+ button.onclick=()=>openJourneyStep(Number(button.dataset.step));
+});
+
 (function(){
  const row=document.querySelector('#s5 .row');
  if(row&&!document.getElementById('exportTxt')){

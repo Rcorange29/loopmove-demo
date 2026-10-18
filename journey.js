@@ -201,7 +201,7 @@ function packingFor(items){
   if(it.fixed||it.bucket==='buy'||it.bucket==='trash')return;
   const n=it.name||'';
   const before={...v},largeBefore=large.length;
-  if(/床|沙发|沙發|床垫|床墊|柜|櫃|桌|椅|sofa|mattress|wardrobe|table|bed|chair/i.test(n))large.push(it);
+  if(/床|沙发|沙發|床垫|床墊|柜|櫃|桌|椅|sofa|mattress|wardrobe|table|desk|bed|chair/i.test(n))large.push(it);
   else if(/书|書|kitchen|厨具|廚具|杂物|雜物|厨具|廚具|books|misc/i.test(n))v.medium+=it.vol;
   else if(/电子|电脑|電腦|装饰|裝飾|化妆品|化妝品|衣|clothes|decor|electronic|laptop|computer/i.test(n))v.small+=it.vol;
   else if(/被|枕|褥|垫|墊|毯|pillow|blanket|linen|bedding|quilt/i.test(n))v.soft+=it.vol;

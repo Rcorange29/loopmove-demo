@@ -2,7 +2,7 @@
 
 面向香港北部搬迁场景的物品整理与循环利用 Demo。通过拖拽物品安排搬家日期，把不带走的物品分为当地购买、转卖、捐赠或回收，并在地图上查找相关地点。
 
-本仓库是**静态前端**：HTML + CSS + JavaScript，无需 Node.js、npm 安装或构建。当前开发分支为 `main`。
+本仓库是**静态前端**：HTML + CSS + JavaScript，无需 Node.js、npm 安装或构建。当前集成分支为 `genai-backend-integration`。
 
 ## 快速启动
 
@@ -11,15 +11,17 @@
 在包含 `index.html`、`journey.js` 和 `journey.css` 的 `loopmove-demo` 目录中打开终端：
 
 ```bash
-python3 -m http.server 8000 --bind 127.0.0.1
+python3 preview.py
 ```
+
+本地预览请使用 `preview.py`：它将 AI 请求同源转发到现有 Render 服务，不需要模型密钥。普通 `python -m http.server` 不能代理 AI 请求，远程服务会拒绝本地浏览器来源。公开部署仍使用仓库的 `config.js`。
 
 浏览器打开 **http://127.0.0.1:8000**，保持终端运行。停止服务按 `Ctrl + C`。
 
 Windows 安装 Python 后可使用：
 
 ```powershell
-py -m http.server 8000 --bind 127.0.0.1
+py preview.py
 ```
 
 ### 从 GitHub 下载
@@ -29,7 +31,7 @@ py -m http.server 8000 --bind 127.0.0.1
 ```bash
 git clone https://github.com/Rcorange29/loopmove-demo.git
 cd loopmove-demo
-python3 -m http.server 8000 --bind 127.0.0.1
+python3 preview.py
 ```
 
 同样打开 **http://127.0.0.1:8000**。建议通过 HTTP 启动，不要直接双击 HTML 文件。
@@ -38,11 +40,11 @@ python3 -m http.server 8000 --bind 127.0.0.1
 
 1. **设置搬家信息**：选择片区和入住日期。
 2. **整理房间物品**：使用示例房间或手动添加，点击卡片编辑；固定设施留在原处。
-3. **对比搬运方案**：智能安排把大件推荐为当地购买、装饰推荐为不带走，其他物品安排到日期；也可手动拖动。点击物品，在地图旁对比搬运体积和重购参考价，查看附近商店及回收点。
-4. **安排物品去向**：选择转卖、捐赠或回收；“一键 AI 选择（演示）”仅补充未选择项，保留已有决定。
+3. **对比搬运方案**：智能安排请求远程 AI 为需要带走的物品分配日期，保留已选的不带走／当地购买去向；也可手动拖动。点击物品，在地图旁对比搬运体积和重购参考价，查看附近商店及回收点。
+4. **安排物品去向**：选择转卖、捐赠或回收；“一键规则建议（非 AI）”仅补充未选择项，保留已有决定。
 5. **搬家行动清单**：四步结束后查看按日期、购买、处理及固定设施分组的清单，保留待完善事项，下载 TXT 或打印为 PDF。
 
-保留简体中文、繁体中文、English，以及标准、老年和视障模式。重购价格及 AI 建议均为演示参考，物品成色、库存和接收条件需自行确认。
+保留简体中文、繁体中文、English，以及标准、老年和视障模式。重购价格为演示参考，去向和打包建议由本地规则生成，物品成色、库存和接收条件需自行确认。
 
 ## GitHub Pages live demo
 
@@ -60,22 +62,22 @@ python3 -m http.server 8000 --bind 127.0.0.1
 | --- | --- |
 | 示例房间、文字录入、物品编辑 | 可用 |
 | 拖拽日期、购买／处理分组、TXT 下载 | 可用 |
-| 智能安排 | 使用本地规则生成演示安排，页面显示“智能安排（演示）” |
-| 照片 AI 识别 | 不可用，需要另外提供后端接口 |
+| 智能安排 | 请求配置的 `/api/arrange`；失败时保留原安排，可重试或主动选择“规则安排（非 AI）” |
+| 照片 AI 识别 | 请求配置的 `/api/recognize`，依赖远程后端可用性；识别结果可手动修正 |
 | 语音输入 | 依赖浏览器支持和麦克风权限 |
 | 地图与回收点查询 | 需要网络；详情见下方 |
 | 装箱建议 | 基于现有物品和估算尺寸生成，不是实时模型建议 |
 
-**本仓库不包含 AI 后端。** 静态演示默认 `IS_STATIC=true`，智能安排直接运行本地规则，不发送 `/api/arrange` 请求。
+**本仓库不包含 AI 后端。** `config.js` 中的 `window.LOOPMOVE_API_BASE` 当前指向 Render 服务。前端据此启用 API 请求；配置存在不等于线上推理或浏览器验收成功。密钥仅保留在后端。
 
-如需接入真实 AI，需要在同源后端实现以下接口，并将密钥保留在服务端：
+远程后端需提供以下接口并允许前端来源的 CORS 请求：
 
 | 接口 | 请求 | 响应 |
 | --- | --- | --- |
 | `POST /api/arrange` | `{ "dates": ["2027-09-01", "2027-09-02"], "items": [{ "id": "it1", "name": "被子", "kind": "床品" }] }` | `{ "items": [{ "id": "it1", "day": 1 }] }` |
 | `POST /api/recognize` | `{ "image": "data:image/jpeg;base64,..." }` | `{ "items": [{ "name": "椅子", "size": "50×50×90cm", "vol": 0.04, "kind": "大件家具", "fixed": false }] }` |
 
-安排结果必须包含全部可搬物品的原始 `id`；`day` 是从 1 开始的日期序号，不能超过日期数量。失败、超时或返回不完整时使用演示安排。部署同源 AI 服务时需将 `index.html` 的 `IS_STATIC` 改为 `false`；线上 AI 分天接口目前只接受日期安排，本地演示额外提供不带走建议。
+安排结果必须恰好包含请求物品的全部原始 `id`，不允许重复或额外 ID；`day` 是从 1 开始的日期序号，不能超过日期数量。固定设施、当地购买和不带走物品不发送给安排接口。失败、超时或无效结果不会覆盖原安排；用户可重试、返回或主动选择本地规则方案。规则方案按估算体积分配日期，不会替用户决定丢弃或重购物品。
 
 ## 地图与数据说明
 
@@ -107,8 +109,26 @@ loopmove-demo/
 ## 常见问题
 
 - **提示找不到 python3**：先安装 Python 3；Windows 尝试使用 `py`。
-- **8000 端口被占用**：将命令中的 `8000` 改为 `8001`，浏览器地址也改为 `http://127.0.0.1:8001`。
+- **8000 端口被占用**：先停止旧预览服务，再运行 `python3 preview.py`。
 - **打开后显示目录列表**：终端启动位置不对，请进入本仓库根目录再运行。
 - **修改后页面没有变化**：强制刷新（macOS：`Cmd + Shift + R`；Windows：`Ctrl + Shift + R`）。刷新前先导出需要保留的安排。
 - **地图空白或回收点不显示**：确认网络可访问底图及 Overpass 服务；仍失败时使用地图区域的外部查询链接。
-- **照片识别不可用**：本仓库没有 AI 后端，演示请使用示例房间或文字录入。
+- **照片识别不可用**：检查 `config.js` 配置、后端状态与网络；可使用明确标注的示例房间或手动录入继续。
+
+## 智能安排回归验证
+
+运行 `node --test tests/arrangement.cjs`。覆盖正常返回、重复／遗漏／未知 ID、非法日期、规则模式、失败、取消、请求期间清单变化和单日安排。这些是逻辑测试，不能代替公开浏览器端到端验收。
+
+## Planning modes and checklist
+
+`Plan myself` clears date assignments, disposal decisions and completion marks while retaining the inventory, photos, fixture classifications and chosen dates. It does not invoke AI planning. `Smart start` uses AI date assignment. There is no standalone AI moving-plan panel.
+
+Drag an item to Leave behind, then from its staging area into one of the three parallel Disposal bins: Resell, Donate or Recycle. Each bin can contain multiple items. Move cards between bins to change their action, or back to the staging area to clear it. The adjacent map searches OpenStreetMap for second-hand shops, charity shops or recycling points according to the selected action. Missing locations do not imply physical stores exist for online platforms; service links remain available. The existing separate item-destinations page is retained.
+
+Moving checklist has actual checkboxes and per-group progress. Completion is preserved when switching pages and included in TXT export. Changing an item's date group or disposal action clears its previous completion mark. State remains in page memory; refresh resets the inventory and checklist.
+
+Packing guide always shows all five existing photo references: suitcase, bedding bag, small reinforced box, medium carton and bulky-item protection. Relevant types show estimated counts and assigned items; unused types remain visible as references. These are rule-based estimates, not model-generated quantities.
+
+AI disposal suggestions on the existing destinations page require deploying `ai_service.py` from this repository to Render. The existing recognition/arrangement service is unchanged by these UI changes. See DEPLOY_AI.md.
+
+Tests: `node --test tests/*.cjs`. The DOM integration test requires jsdom installed outside the repository: `NODE_PATH=/tmp/loopmove-dom-qa/node_modules node tests/dom-flow.js`. It checks language, manual reset, staged/nested drag-and-drop, multi-item bins, action-specific map queries, checkboxes, progress and export. AI/map responses in that test are mocked.

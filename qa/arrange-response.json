@@ -1,0 +1,19 @@
+{
+  "items": [
+    {
+      "id": "qa-bed",
+      "day": 1
+    },
+    {
+      "id": "qa-desk",
+      "day": 1
+    },
+    {
+      "id": "qa-pc",
+      "day": 2
+    }
+  ],
+  "provider": "volcengine_ark",
+  "model": "doubao-seed-2-1-lite-260915",
+  "request_id": "f11c9fe6e0f5"
+}

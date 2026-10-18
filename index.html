@@ -433,7 +433,7 @@ body.eld .map-legend .lg{font-size:14px;}
 }
 @media print{#fab,.topbar,.row button,.no-print{display:none!important;}.screen{display:block!important;}.map-card{display:none!important;}}
 </style>
-<link rel="stylesheet" href="journey.css">
+<link rel="stylesheet" href="journey.css?v=20261018-disposal">
 </head>
 <body>
 <div class="wrap">
@@ -656,6 +656,9 @@ body.eld .map-legend .lg{font-size:14px;}
 </div>
 <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
+<script src="config.js?v=20261018-disposal"></script>
+<script src="recognition.js?v=20261018-disposal"></script>
+<script src="planning.js?v=20261018-disposal"></script>
 <script>
 /* ---------- data (reused from GitHub source) ---------- */
 const DESTS=[
@@ -978,7 +981,7 @@ function addItem(name,photo,ov){
  if(!name)return;
  const e=estimateItem(name);
  ov=ov||{};
- S.items.push({id:uid(),name,size:ov.size||e.size,vol:ov.vol||e.vol,kind:ov.kind||e.kind,ch:ov.ch||e.ch,fixed:ov.fixed===true,bbox:ov.bbox||null,photo:photo||null,bucket:e.day,rebuy:e.rebuy,recover:e.recover});
+ S.items.push({id:uid(),name,size:ov.size||e.size,vol:ov.vol??e.vol,kind:ov.kind||e.kind,ch:ov.ch||e.ch,fixed:ov.fixed===true,names:ov.names||{},sourceName:ov.sourceName||name,nameNeedsReview:!!ov.nameNeedsReview,nameEdited:false,bbox:ov.bbox||null,photo:photo||null,bucket:e.day,rebuy:e.rebuy,recover:e.recover});
  renderItems();
 }
 function renderItems(){
@@ -993,21 +996,38 @@ function renderItems(){
  });
 }
 /* 把用户上传的图 + AI 框画出来 */
+let recognitionView=null;
 function renderRecognized(photoUrl,items){
- const box=document.getElementById('recognizeBox');
- box.style.display='block';
- let html='<div class="eyebrow" style="margin-top:0">'+T('recTitle2')+'</div><div class="anno-wrap"><img src="'+photoUrl+'">';
- items.forEach((it,i)=>{
-  let b=it.bbox;
-  if(!b){const cols=3,rows=Math.ceil(items.length/cols),cw=100/cols,chh=100/rows;
-   b=[(i%cols)*cw+1, Math.floor(i/cols)*chh+1, (i%cols+1)*cw-1, (Math.floor(i/cols)+1)*chh-1];}
-  html+='<div class="anno" data-id="'+it.id+'" style="left:'+b[0]+'%;top:'+b[1]+'%;width:'+(b[2]-b[0])+'%;height:'+(b[3]-b[1])+'%"><b>'+(it.fixed?'⚠️ ':'')+esc(nm(it))+'</b><span>'+it.vol+'m³</span></div>';
+ recognitionView={photoUrl,ids:items.map(i=>i.id)};
+ const box=document.getElementById('recognizeBox');box.style.display='block';box.replaceChildren();
+ const title=document.createElement('div');title.className='eyebrow';title.style.marginTop='0';title.textContent=T('recTitle2');box.append(title);
+ const tools=document.createElement('div');tools.className='recognition-tools';const select=document.createElement('select');select.setAttribute('aria-label',LANG==='en'?'Choose item to locate':LANG==='zhHant'?'選擇要定位的物品':'选择要定位的物品');items.forEach(it=>{const option=document.createElement('option');option.value=it.id;option.textContent=nm(it);select.append(option);});tools.append(select);const draw=document.createElement('button');draw.type='button';draw.textContent=LANG==='en'?'Draw / correct box':LANG==='zhHant'?'繪製／修正框選':'绘制／修正框选';draw.disabled=!items.length;tools.append(draw);box.append(tools);
+ const wrap=document.createElement('div');wrap.className='anno-wrap';const img=document.createElement('img');img.src=photoUrl;img.draggable=false;img.alt=LANG==='en'?'Uploaded room photo':LANG==='zhHant'?'上傳的房間照片':'上传的房间照片';wrap.append(img);box.append(wrap);
+ let drawing=false,start=null,preview=null,pointer=null;
+ draw.onclick=()=>{drawing=!drawing;wrap.classList.toggle('is-drawing',drawing);draw.setAttribute('aria-pressed',String(drawing));};
+ const position=e=>{const r=img.getBoundingClientRect();return [Math.max(0,Math.min(100,(e.clientX-r.left)/r.width*100)),Math.max(0,Math.min(100,(e.clientY-r.top)/r.height*100))];};
+ wrap.onpointerdown=e=>{if(!drawing||e.button!==0)return;e.preventDefault();start=position(e);pointer=e.pointerId;wrap.setPointerCapture(pointer);preview=document.createElement('div');preview.className='box-preview';wrap.append(preview);};
+ wrap.onpointermove=e=>{if(!start||e.pointerId!==pointer)return;const end=position(e);Object.assign(preview.style,{left:Math.min(start[0],end[0])+'%',top:Math.min(start[1],end[1])+'%',width:Math.abs(end[0]-start[0])+'%',height:Math.abs(end[1]-start[1])+'%'});};
+ wrap.onpointerup=e=>{if(!start||e.pointerId!==pointer)return;const end=position(e),b=[Math.min(start[0],end[0]),Math.min(start[1],end[1]),Math.max(start[0],end[0]),Math.max(start[1],end[1])];const it=items.find(i=>i.id===select.value);start=null;if(it&&b[2]-b[0]>=0.5&&b[3]-b[1]>=0.5){it.bbox=b;it.bboxSource='manual';}refreshRecognized();};
+ wrap.onpointercancel=()=>{start=null;preview?.remove();};
+ const unlocated=[];
+ items.forEach(it=>{
+  const b=LoopMoveRecognition.bbox(it.bbox);
+  if(!b){unlocated.push(it);return;}
+  const a=document.createElement('button');a.type='button';a.className='anno'+(it.fixed?' anno-fixed':'');a.dataset.id=it.id;
+  Object.assign(a.style,{left:b[0]+'%',top:b[1]+'%',width:(b[2]-b[0])+'%',height:(b[3]-b[1])+'%'});
+  const label=document.createElement('b');label.textContent=(it.fixed?'⚠ ':'')+nm(it);a.append(label);a.title=nm(it);a.setAttribute('aria-label',nm(it)+' · '+T('editTip'));a.onclick=()=>{if(!drawing)openEditor(it);};wrap.append(a);
  });
- html+='</div>';
- box.innerHTML=html;
- box.querySelectorAll('.anno').forEach(a=>a.addEventListener('click',()=>{
-   const it=S.items.find(x=>x.id===a.dataset.id); if(it)openEditor(it);
- }));
+ const hint=document.createElement('p');hint.className='recognition-note';hint.textContent=LANG==='en'?'AI locations and dimensions are estimates. Click an item to correct it. Fixed fixtures stay in place.':LANG==='zhHant'?'AI 位置與尺寸為估計值，點選物品可修正；固定設施留在原處。':'AI 位置与尺寸为估计值，点选物品可修正；固定设施留在原处。';box.append(hint);
+ if(unlocated.length){
+  const note=document.createElement('p');note.className='recognition-note';note.textContent=LANG==='en'?'These items have no reliable location; no box is drawn.':LANG==='zhHant'?'以下物品沒有可靠的位置資料，暫不繪框。':'以下物品没有可靠的位置数据，暂不绘框。';box.append(note);
+  const list=document.createElement('div');list.className='unlocated-items';unlocated.forEach(it=>{const button=document.createElement('button');button.textContent=(it.fixed?'⚠ ':'')+nm(it);button.onclick=()=>openEditor(it);list.append(button);});box.append(list);
+ }
+}
+function refreshRecognized(){
+ if(!recognitionView)return;
+ const items=recognitionView.ids.map(id=>S.items.find(i=>i.id===id)).filter(Boolean);
+ renderRecognized(recognitionView.photoUrl,items);
 }
 document.getElementById('addText').onclick=()=>{const i=document.getElementById('itemName');addItem(i.value.trim());i.value='';};
 document.getElementById('itemName').addEventListener('keydown',e=>{if(e.key==='Enter'){document.getElementById('addText').click();}});
@@ -1021,13 +1041,14 @@ document.getElementById('addVoice').onclick=()=>{
 document.getElementById('addPhoto').onclick=()=>document.getElementById('photoInput').click();
 document.getElementById('photoInput').onchange=e=>{
  const f=e.target.files[0];if(!f)return;
+ const requestedLanguage=LANG;
  const rd=new FileReader();rd.onload=async ev=>{
   const mask=document.getElementById('recMask'),step=document.getElementById('recStep'),bar=document.getElementById('recBar');
   mask.classList.add('show');
   step.textContent=T('recUpload'); bar.style.width='20%';
   let timer=setTimeout(()=>{step.textContent=T('recAI');bar.style.width='55%';},2500);
   setTimeout(()=>{step.textContent=T('recList');bar.style.width='85%';},15000);
-  let ok=false;
+  let ok=false,lastError=null;
   if(IS_STATIC){
    clearTimeout(timer); mask.classList.remove('show');
    bAlert(T('recStatic'));
@@ -1035,22 +1056,24 @@ document.getElementById('photoInput').onchange=e=>{
   }
   for(let attempt=1;attempt<=2&&!ok;attempt++){
    try{
-    const res=await fetch('/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:ev.target.result})});
+    const res=await fetch(API_BASE+'/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:ev.target.result,language:LoopMoveRecognition.language(requestedLanguage),bbox_format:"xyxy_percent"}),signal:AbortSignal.timeout(45000)});
     const j=await res.json();
-    if(j.items&&j.items.length){ ok=true;
+    if(!res.ok)throw new Error(j.message||j.error||'AI recognition failed');
+    const recognized=Array.isArray(j.items)?j.items.map(it=>LoopMoveRecognition.item(it,requestedLanguage,j.bbox_format||'xyxy_percent')).filter(Boolean):[];
+    if(recognized.length){ ok=true;
      bar.style.width='100%'; step.textContent=T('recDone');
      if(document.body.classList.contains('lowvision'))speak(TF('speakDone',{n:j.items.length}));
      const before=S.items.length;
      setTimeout(()=>{mask.classList.remove('show');
-      j.items.forEach(it=>addItem(it.name,ev.target.result,{size:it.size,vol:it.vol,kind:it.kind,ch:it.channel,bbox:it.bbox,fixed:it.fixed}));
+      recognized.forEach(it=>addItem(it.name,ev.target.result,{size:it.size,vol:it.vol,kind:it.kind,ch:it.channel,bbox:it.bbox,fixed:it.fixed,names:it.names,sourceName:it.sourceName,nameNeedsReview:it.nameNeedsReview}));
       renderRecognized(ev.target.result,S.items.slice(before));
      },500);
     }else if(attempt===1){ step.textContent=T('recRetry'); }
-   }catch(err){ ok=false; break; }
+   }catch(err){ lastError=err; ok=false; break; }
   }
   if(!ok){
    clearTimeout(timer); mask.classList.remove('show');
-   bAlert(T('recStatic'));
+   bAlert(lastError&&lastError.message?lastError.message:T('recStatic'));
   }
  };rd.readAsDataURL(f);
 };
@@ -1345,7 +1368,7 @@ mapFurDesc:'可买床架、书桌等大件。',mapMallDesc:'一站式补足日�
 let LANG=localStorage.getItem('lm-lang')||'en';
 const T=k=>{const d=I18N[LANG]||I18N.en;return (k in d)?d[k]:k;};
 const TF=(k,o)=>String(T(k)).replace(/\{(\w+)\}/g,(m,x)=>o[x]!==undefined?o[x]:m);
-function nm(i){if(i&&i._key){const s0=SEED.find(x=>x.name===i._key);if(s0)return LANG==='en'?(s0.en||i._key):(LANG==='zhHant'?(s0.hant||i._key):i._key);}return i?i.name:'';}
+function nm(i){if(i&&i._key){const s0=SEED.find(x=>x.name===i._key);if(s0)return LANG==='en'?(s0.en||i._key):(LANG==='zhHant'?(s0.hant||i._key):i._key);}return i?LoopMoveRecognition.displayName(i,LANG):'';}
 function applyLang(){
  document.querySelectorAll('[data-i18n]').forEach(el=>{
   const v=T(el.dataset.i18n);
@@ -1362,7 +1385,7 @@ function rerenderAll(){
  if(_gmap)renderGMap();else if(_map)renderMap();
  buildDest();buildGoals();
  const on=document.querySelector('.screen.on').id;
- if(on==='s2')renderItems();
+ if(on==='s2'){renderItems();refreshRecognized();}
  if(on==='s3')renderBoard();
  if(on==='s4')renderModal();
  if(on==='s5')renderPlan();
@@ -1603,7 +1626,7 @@ document.getElementById('autoSplit').onclick=()=>{
  }
  typeText(tEl, aiWhyText());
  /* 异步调模型生成更详细的解释，失败不影响本地文案（静态版跳过） */
- if(!IS_STATIC) fetch('/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dest:S.dest||'',purpose:p,items:sorted.map(i=>({name:i.name,vol:i.vol,kind:i.kind}))})})
+ if(!IS_STATIC) fetch(API_BASE+'/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dest:S.dest||'',purpose:p,items:sorted.map(i=>({name:i.name,vol:i.vol,kind:i.kind}))}),signal:AbortSignal.timeout(45000)})
   .then(r=>r.json()).then(j=>{if(j.text)typeText(tEl,j.text);})
   .catch(()=>{});
 };
@@ -1612,12 +1635,13 @@ document.getElementById('genPlan').onclick=async e=>{ const box=document.getElem
  box.innerHTML='<span class="ai-loading">'+T('genLoading')+'</span>';
  if(IS_STATIC){ typeText(box,T('planStatic')); return; }
  try{
-  const res=await fetch('/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+  const res=await fetch(API_BASE+'/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
    dest:S.dest||'', items:S.items.filter(i=>i.bucket!=='trash').map(i=>({name:i.name,vol:i.vol,kind:i.kind,ch:i.ch}))
-  })});
+  }),signal:AbortSignal.timeout(45000)});
   const j=await res.json();
+  if(!res.ok)throw new Error(j.message||j.error||'AI plan failed');
   typeText(box, j.text||'(failed, try again later)');
- }catch(err){ typeText(box,T('planStatic')); }
+ }catch(err){ typeText(box,err&&err.message?err.message:T('planStatic')); }
 };
 document.getElementById('back3').onclick=()=>go(3);
 /* step4 处理页导航 */
@@ -1725,8 +1749,9 @@ function suggestChannel(it){
  if(/书|纸|零碎/.test(k))return{ch:'绿在区区',why:'纸类/零碎就近回收'};
  return{ch:'绿在区区',why:'一般可回收物'};
 }
-/* 静态托管环境探测（公网版无后端 API，跳过请求走降级） */
-const IS_STATIC=true; // Static demo: enable only when a same-origin AI backend is deployed.
+/* Use the deployed API base URL when configured; localhost uses its own origin. */
+const API_BASE=(window.LOOPMOVE_API_BASE||( ['localhost','127.0.0.1'].includes(location.hostname)?location.origin:'' )).replace(/\/+$/,'');
+const IS_STATIC=!API_BASE;
 /* ---------- item editor ---------- */
 let ieCurrent=null;
 function openEditor(it){
@@ -1750,18 +1775,19 @@ document.getElementById('itemMask').addEventListener('click',e=>{if(e.target.id=
 document.getElementById('ieSave').onclick=()=>{
  if(!ieCurrent)return;
  const l=+document.getElementById('ieL').value||0,w=+document.getElementById('ieW').value||0,h=+document.getElementById('ieH').value||0;
- ieCurrent.name=document.getElementById('ieName').value||ieCurrent.name;
+ const editedName=document.getElementById('ieName').value.trim();
+ if(editedName&&editedName!==nm(ieCurrent)){ieCurrent.name=editedName;ieCurrent.nameEdited=true;ieCurrent.names={};}
  ieCurrent.size=`${l}×${w}×${h}cm`;
  ieCurrent.vol=+(l*w*h/1e6).toFixed(3);
  document.getElementById('itemMask').classList.remove('show');
- renderItems();
+ renderItems();refreshRecognized();
 };
 document.getElementById('ieDelete').onclick=()=>{
  if(!ieCurrent)return;
  S.items=S.items.filter(x=>x.id!==ieCurrent.id);
  ieCurrent=null;
  document.getElementById('itemMask').classList.remove('show');
- renderItems();
+ renderItems();refreshRecognized();
 };
 /* 标注框可点 → 打开编辑 */
 document.querySelectorAll('.anno').forEach(a=>{
@@ -1826,6 +1852,6 @@ buildDest();
 buildGoals();
 document.querySelector('#accSwitch button[data-acc=""]').classList.add('on');
 </script>
-<script src="journey.js"></script>
+<script src="journey.js?v=20261018-disposal"></script>
 </body>
 </html>

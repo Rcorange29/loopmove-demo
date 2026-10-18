@@ -620,6 +620,29 @@ function ruleFallback(){
  S.trips=N;
  renderBoard();
 }
+/* AI 分类结果的文案：按当前语言实时生成，切换语言时可用同一份数据重排，避免残留旧语言 */
+function arrangeHeadText(){
+ return jl('AI 已完成分类与分天（可手动调整）：','AI finished classifying & scheduling (adjustable):','AI 已完成分類與分天（可手動調整）：');
+}
+function arrangeReasonText(){
+ const arr=journey.lastArrange||[];
+ const sep=jl('：',': ','：');
+ return arr.slice(0,14).map(r=>{
+  const it=S.items.find(x=>x.id===r.id);
+  const name=it?nm(it):r.id;
+  let why;
+  if(LANG==='zhHans')why=r.reason||'';
+  else if(r.decision==='fixed')why=jl('固定设施，留在原处','Fixed fixture — stays in place','固定設施，留在原處');
+  else if(r.decision==='buy')why=jl('当地购买，不搬运','Buy locally — no need to move','當地購買，不搬運');
+  else if(r.decision==='trash'){
+   why=r.handle==='sell'?jl('当地转卖','Resell locally','當地轉賣')
+     :r.handle==='donate'?jl('捐赠出去','Donate','捐贈出去')
+     :r.handle==='recycle'?jl('回收处理','Recycle','回收處理')
+     :jl('不搬走','Leave behind','不搬走');
+  }else why=jl('安排到第 '+(r.day||1)+' 天','Scheduled to Day '+(r.day||1),'安排到第 '+(r.day||1)+' 天');
+  return '· '+name+sep+why;
+ }).join('\n');
+}
 async function smartArrange(){
  if(journey.arranging)return;
  normalizeItems();
@@ -693,25 +716,10 @@ async function smartArrange(){
   });
   S.trips=N;
   journey.arrangement='ai';journey.edited=false;
+  journey.lastArrange=j.items.slice();   /* 记住结果，切换语言时可按新语言重排这段说明 */
   renderBoard();
-  /* 后端 reason 固定回中文，非中文界面改为按 decision 生成对应语言的说明，避免中英混排 */
-  const locReason=r=>{
-   if(LANG==='zhHans')return r.reason||'';
-   if(r.decision==='fixed')return jl('固定设施，留在原处','Fixed fixture — stays in place','固定設施，留在原處');
-   if(r.decision==='buy')return jl('当地购买，不搬运','Buy locally — no need to move','當地購買，不搬運');
-   if(r.decision==='trash'){
-    if(r.handle==='sell')return jl('当地转卖','Resell locally','當地轉賣');
-    if(r.handle==='donate')return jl('捐赠出去','Donate','捐贈出去');
-    if(r.handle==='recycle')return jl('回收处理','Recycle','回收處理');
-    return jl('不搬走','Leave behind','不搬走');
-   }
-   return jl('安排到第 '+(r.day||1)+' 天','Scheduled to Day '+(r.day||1),'安排到第 '+(r.day||1)+' 天');
-  };
-  const sep=jl('：',': ','：');
-  const reasons=j.items.slice(0,14)
-   .map(r=>{const it=S.items.find(x=>x.id===r.id);return '· '+(it?nm(it):r.id)+sep+locReason(r);}).join('\n');
-  const head=jl('AI 已完成分类与分天（可手动调整）：','AI finished classifying & scheduling (adjustable):','AI 已完成分類與分天（可手動調整）：');
-  tEl.textContent=head+'\n'+reasons;
+  const head=arrangeHeadText();
+  tEl.textContent=head+'\n'+arrangeReasonText();
   if(document.body.classList.contains('lowvision'))speak(head.replace(/\n/g,' '));
   refreshMap();
  }catch(err){
@@ -795,6 +803,13 @@ applyLang=function(){
  const current=document.querySelector('.screen.on');
  if(current){const n=current.id;if(n==='s3')renderBoard();if(n==='s5')renderPlan();}
  renderItems();
+ /* 已生成过 AI 分类说明的，切换语言后按新语言重排，避免中英混排 */
+ try{
+  const box=document.getElementById('aiWhy'),tEl=document.getElementById('aiWhyText');
+  if(box&&tEl&&box.style.display!=='none'&&journey.lastArrange&&journey.lastArrange.length){
+   tEl.textContent=arrangeHeadText()+'\n'+arrangeReasonText();
+  }
+ }catch(e){}
 };
 /* 初始化：重新应用语言（注入五区/导航文案），再渲染看板
    分开兜底：看板渲染失败不影响第一步内容展示 */

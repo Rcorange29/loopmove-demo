@@ -194,3 +194,83 @@ body.lowvision #mapDock,body.lowvision .disposal-group,body.lowvision #packingGu
  #s5 .no-print { display:none!important; }
  .plan-day { break-inside:avoid; box-shadow:none; }
 }
+
+/* =========================================================================
+   五区分类（Compare More Options）：日期列 + Buy + Leave Behind 三处理
+   ========================================================================= */
+#board { display:block; overflow:visible; }
+.day-cols { display:grid; gap:12px; align-items:start; margin-bottom:16px; }
+.leave-cols { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.4fr); gap:14px; align-items:start; margin-bottom:14px; }
+.drop-col { min-height:96px; padding:10px; border:2px dashed var(--line); background:#fff; box-shadow:3px 3px 0 #141414; display:flex; flex-direction:column; gap:6px; transition:background .12s,border-color .12s; }
+.drop-col h3,.drop-col h4 { margin:0 0 2px; font-size:14px; font-weight:900; display:flex; align-items:center; justify-content:space-between; gap:6px; }
+.drop-col .v { font-size:11px; color:var(--muted); font-weight:700; }
+.drop-col .count { font-size:11px; background:var(--ink); color:#fff; border-radius:999px; min-width:20px; height:20px; display:inline-flex; align-items:center; justify-content:center; padding:0 6px; }
+.drop-col .drop-empty { font-size:11px; color:var(--muted); border:2px dashed #c6c3b6; padding:10px 6px; text-align:center; flex:1; display:flex; align-items:center; justify-content:center; }
+.drop-col.over { background:var(--wash); border-color:var(--brand); border-style:solid; }
+.day-col { background:#edf1e8; }
+.buy-col { background:#eef4ec; border-style:solid; border-color:var(--brand); }
+.leave-behind { padding:12px; background:#e7eedf; border:3px solid var(--brand); box-shadow:3px 3px 0 #141414; }
+.leave-behind .lb-title { margin:0 0 10px; font-size:15px; font-weight:900; }
+.handle-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
+.handle-col { box-shadow:2px 2px 0 #141414; min-height:84px; }
+.sell-col { background:#f4faf2; }
+.donate-col { background:#f5f1fa; }
+.recycle-col { background:#faf1ef; }
+.pending-col { background:#fbf7e6; border-color:#b58a1f; margin-bottom:10px; }
+.loc-btn { margin-top:auto; padding:6px 8px; font-size:11px; font-weight:800; width:100%; background:#fff; }
+.item.fixed { opacity:.85; background:#ecebe2; }
+.item.handled b { display:flex; align-items:center; gap:4px; }
+
+/* =========================================================================
+   每日紧凑打包（Moving Checklist）：sprite 切 5 面板，55×92
+   ========================================================================= */
+.pk-block { margin-top:10px; padding:10px; border:2px solid var(--line); background:#fffef9; }
+.pk-title { margin:0 0 8px; font-size:13px; font-weight:900; }
+.pk-list { display:flex; flex-direction:column; gap:8px; }
+.pk-line { display:flex; align-items:center; gap:10px; }
+.pk-thumb { flex:none; width:55px; height:92px; border:2px solid var(--line); background-image:url('assets/images/packing-reference.png'); background-size:500% 100%; background-repeat:no-repeat; background-color:#f6f3ea; }
+.pk-thumb.pk1 { background-position:0% 50%; }
+.pk-thumb.pk2 { background-position:25% 50%; }
+.pk-thumb.pk3 { background-position:50% 50%; }
+.pk-thumb.pk4 { background-position:75% 50%; }
+.pk-thumb.pk5 { background-position:100% 50%; }
+.pk-meta { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.pk-meta b { font-size:13px; font-weight:900; }
+.pk-meta small { font-size:11px; color:var(--muted); overflow-wrap:anywhere; }
+.pk-note { margin:8px 0 0; font-size:10px; line-height:1.6; color:var(--muted); }
+.pk-none { font-size:12px; color:var(--muted); margin:0; }
+.plan-check { display:flex; align-items:flex-start; gap:8px; font-size:15px; padding:3px 0; cursor:pointer; }
+.plan-check input { margin-top:3px; }
+.trash-group { margin:14px 0; padding:10px 12px; border:2px solid var(--line); background:#fff; }
+.trash-group h4 { margin:0 0 6px; font-size:14px; font-weight:900; }
+.svc-links { display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+.svc-links a { font-size:12px; font-weight:800; }
+
+/* =========================================================================
+   地点查询 / 地图 tabs
+   ========================================================================= */
+#mapModes { display:flex; gap:6px; flex-wrap:wrap; }
+.shop-head { margin:8px 0 6px; }
+.shop-match { display:block; padding:8px 10px; margin-bottom:6px; border:2px solid var(--line); background:#fff; box-shadow:2px 2px 0 #141414; text-decoration:none; color:var(--ink); }
+.shop-match b { display:block; font-size:13px; }
+.shop-match small { display:block; font-size:11px; color:var(--muted); margin-top:2px; overflow-wrap:anywhere; }
+.map-hint { font-size:11px; color:var(--muted); line-height:1.6; margin:6px 0; }
+.disposal-fallback { display:flex; flex-direction:column; gap:6px; margin-top:8px; }
+.disposal-fallback .dlink { font-size:12px; font-weight:800; }
+.lm-pin.sell-pin { background:#dcefdd; border:3px solid #347245; }
+.lm-pin.donate-pin { background:#ece1f7; border:3px solid #7c3aed; }
+.lm-pin.recycle-pin { background:#f6e0dc; border:3px solid #b3261e; }
+
+/* 旧右下角垃圾桶浮层已由页面内五区取代 */
+#trashZone { display:none !important; }
+
+/* 窄屏：日期列与去向列自适应 */
+@media (max-width:980px){
+ .day-cols { grid-template-columns:repeat(2,minmax(0,1fr)) !important; }
+ .leave-cols { grid-template-columns:1fr; }
+ .handle-grid { grid-template-columns:1fr; }
+}
+@media (max-width:560px){
+ .day-cols { grid-template-columns:1fr !important; }
+ .pk-thumb { width:48px; height:80px; }
+}

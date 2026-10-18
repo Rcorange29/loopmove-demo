@@ -433,14 +433,14 @@ body.eld .map-legend .lg{font-size:14px;}
 }
 @media print{#fab,.topbar,.row button,.no-print{display:none!important;}.screen{display:block!important;}.map-card{display:none!important;}}
 </style>
-<link rel="stylesheet" href="journey.css">
+<link rel="stylesheet" href="journey.css?v=20261018a">
 </head>
 <body>
 <div class="wrap">
   <header class="topbar">
     <div class="logo"><i></i>LoopMove</div>
     <nav class="steps" aria-label="搬家步骤">
-      <button type="button" data-step="1" data-i18n="nav1">1 目的地</button><button type="button" data-step="2" data-i18n="nav2">2 物品</button><button type="button" data-step="3" data-i18n="nav3">3 分天</button><button type="button" data-step="4" data-i18n="nav4">4 处理</button><button type="button" data-step="5" data-i18n="nav5">5 计划</button>
+      <button type="button" data-step="1" data-i18n="nav1">1 目的地</button><button type="button" data-step="2" data-i18n="nav2">2 物品</button><button type="button" data-step="3" data-i18n="nav3">3 对比</button><button type="button" data-step="5" data-i18n="nav5">4 清单</button>
     </nav>
     <div class="acc" id="accSwitch">
       <button data-acc="" title="标准版" data-i18n="accStd">标准版</button><button data-acc="elder" title="老年版" data-i18n="accEld">老年版</button><button data-acc="lowvision" title="视障版" data-i18n="accLv">视障版</button>
@@ -533,19 +533,6 @@ body.eld .map-legend .lg{font-size:14px;}
       <button class="ghost" id="back2" data-i18n="s3back">← 返回改物品</button>
       <button class="ghost ai-pulse" id="autoSplit" data-i18n="s3ai">⚡ AI 自动分天</button>
       <button class="primary" id="to4" data-i18n="s3to4">处理不搬的东西 →</button>
-    </div>
-  </section>
-
-  <!-- SCREEN 4: 处理废物 -->
-  <section class="screen" id="s4">
-    <h1 data-i18n="nav4"></h1>
-    <div class="disp-summary" id="dispSummary"></div>
-    <div id="dispList" style="max-height:50vh;overflow:auto;padding:10px 0"></div>
-    <div class="row no-print">
-      <button class="ghost" id="back3d" data-i18n="s4back">← 返回分天</button>
-      <button class="ghost" id="aiFill2" data-i18n="s4ai">✨ 一键 AI 建议</button>
-      <button class="ghost" id="resetDec2" data-i18n="s4reset">↺ 清空重选</button>
-      <button class="primary" id="to5" data-i18n="s4to5">确认并看整体计划 →</button>
     </div>
   </section>
 
@@ -644,19 +631,30 @@ body.eld .map-legend .lg{font-size:14px;}
 <div id="recMask">
   <div class="modal" style="width:min(380px,100%);text-align:center">
     <div style="padding:26px 22px">
-      <div id="recSpin" style="font-size:34px;animation:spin 1s linear infinite;margin-bottom:14px">◍</div>
-      <h2 style="font-size:18px;margin-bottom:6px" data-i18n="recTitle">AI 正在识别物品</h2>
-      <p id="recStep" style="color:var(--brand);font-weight:700;font-size:13px;margin-bottom:18px">正在上传照片…</p>
-      <div style="height:14px;border:2px solid var(--ink);background:var(--paper);box-shadow:3px 3px 0 var(--ink);overflow:hidden">
-        <div id="recBar" style="height:100%;width:12%;background:var(--brand);transition:width .5s"></div>
+      <div id="recProgress">
+        <div id="recSpin" style="font-size:34px;animation:spin 1s linear infinite;margin-bottom:14px">◍</div>
+        <h2 style="font-size:18px;margin-bottom:6px" data-i18n="recTitle">AI 正在识别物品</h2>
+        <p id="recStep" style="color:var(--brand);font-weight:700;font-size:13px;margin-bottom:18px">正在上传照片…</p>
+        <div style="height:14px;border:2px solid var(--ink);background:var(--paper);box-shadow:3px 3px 0 var(--ink);overflow:hidden">
+          <div id="recBar" style="height:100%;width:12%;background:var(--brand);transition:width .5s"></div>
+        </div>
+        <p style="font-size:12px;color:#666;margin-top:12px" data-i18n="recNote">首次识别约需 1–2 分钟，请保持页面打开</p>
       </div>
-      <p style="font-size:12px;color:#666;margin-top:12px" data-i18n="recNote">首次识别约需 1–2 分钟，请保持页面打开</p>
+      <div id="recFail" style="display:none">
+        <h2 style="font-size:18px;margin-bottom:8px" data-i18n="recFailTitle">这次没识别成功</h2>
+        <img id="recFailImg" alt="" style="display:block;max-width:100%;max-height:150px;margin:0 auto 10px;border:2px solid var(--ink);object-fit:contain">
+        <p id="recFailMsg" style="font-size:13px;color:#333;margin-bottom:16px"></p>
+        <div class="row" style="justify-content:center">
+          <button class="primary" id="recRetryBtn" data-i18n="recRetryBtn">重试识别</button>
+          <button class="ghost" id="recKeepBtn" data-i18n="recKeepBtn">保留照片，手动添加</button>
+        </div>
+      </div>
     </div>
   </div>
 </div>
 <style>@keyframes spin{to{transform:rotate(360deg)}}</style>
 
-<script src="config.js"></script>
+<script src="config.js?v=20261018b"></script>
 <script>
 /* ---------- data (reused from GitHub source) ---------- */
 const DESTS=[
@@ -813,7 +811,7 @@ const DAY_LOCS={
    {id:'stt6',name:{en:'Pricerite (Landmark North)',hant:'實惠（上水廣場）',hans:'实惠（上水广场）'},cat:'furniture',lat:22.5018,lng:114.1270,addr:{en:'Landmark North, Sheung Shui',hant:'上水廣場',hans:'上水广场'}}
   ]}
 };
-let _map=null,_layer=null,_mv=null,_tiles=null;
+let _map=null,_layer=null,_mv=null,_tiles=null,_mapLoading=false;
 const TILE_OSM=()=>L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OpenStreetMap contributors',maxZoom:19});
 const TILE_ESRI=()=>L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',{attribution:'Esri · World Street Map',maxZoom:18});
 function t3(o){return LANG==='en'?(o.en||o.hans||''):(LANG==='zhHant'?(o.hant||o.hans||''):(o.hans||o.hant||''));}
@@ -910,6 +908,7 @@ function loadGMap(cb){
  document.head.appendChild(s);
 }
 function initLeaflet(cfg){
+ if(_map)return;
  _map=L.map('mapBox',{scrollWheelZoom:false}).setView(cfg.center,12);
  _tiles=TILE_OSM().addTo(_map);
  let fail=0;
@@ -921,8 +920,12 @@ function ensureMap(){
  const b=document.getElementById('mapBox');if(!b)return;
  if(_gmap){renderGMap();return;}
  if(_map){renderMap();return;}
+ if(_mapLoading)return;
+ _mapLoading=true;
  b.innerHTML='<div style="padding:30px;text-align:center;font-weight:800;color:var(--muted)">'+T('mapLoad')+'…</div>';
- loadGMap(()=>initGMap(DAY_LOCS[S.dest?S.dest.id:'hsk']||DAY_LOCS.hsk));
+ // Prefer the self-hosted Leaflet + OSM tiles: no API key, no referrer
+ // whitelist, and identical behaviour in local testing and production.
+ loadLeaflet(()=>{_mapLoading=false;initLeaflet(DAY_LOCS[S.dest?S.dest.id:'hsk']||DAY_LOCS.hsk);});
 }
 /* ---------- screen 1 ---------- */
 function buildDest(){
@@ -975,11 +978,17 @@ document.getElementById('fab').innerHTML=TRASH_SVG+'<span class="tip">随时点�
 document.getElementById('trashTitle').innerHTML=TRASH_SVG_BIG;
 
 /* ---------- screen 2 ---------- */
+function numVol(v){
+ if(typeof v==='number'&&isFinite(v))return Math.max(v,0);
+ if(typeof v==='string'){const m=v.replace(/,/g,'').match(/\d+(?:\.\d+)?/);if(m){const n=parseFloat(m[0]);if(isFinite(n))return Math.max(n,0);}}
+ return null;
+}
 function addItem(name,photo,ov){
  if(!name)return;
  const e=estimateItem(name);
  ov=ov||{};
- S.items.push({id:uid(),name,size:ov.size||e.size,vol:ov.vol||e.vol,kind:ov.kind||e.kind,ch:ov.ch||e.ch,fixed:ov.fixed===true,bbox:ov.bbox||null,photo:photo||null,bucket:e.day,rebuy:e.rebuy,recover:e.recover});
+ const nv=numVol(ov.vol);
+ S.items.push({id:uid(),name,size:ov.size||e.size,vol:(nv==null?e.vol:nv),kind:ov.kind||e.kind,ch:ov.ch||e.ch,fixed:ov.fixed===true,bbox:ov.bbox||null,photo:photo||null,bucket:e.day,rebuy:e.rebuy,recover:e.recover});
  renderItems();
 }
 function renderItems(){
@@ -1020,41 +1029,130 @@ document.getElementById('addVoice').onclick=()=>{
  r.start();
 };
 document.getElementById('addPhoto').onclick=()=>document.getElementById('photoInput').click();
-document.getElementById('photoInput').onchange=e=>{
- const f=e.target.files[0];if(!f)return;
- const rd=new FileReader();rd.onload=async ev=>{
-  const mask=document.getElementById('recMask'),step=document.getElementById('recStep'),bar=document.getElementById('recBar');
-  mask.classList.add('show');
-  step.textContent=T('recUpload'); bar.style.width='20%';
-  let timer=setTimeout(()=>{step.textContent=T('recAI');bar.style.width='55%';},2500);
-  setTimeout(()=>{step.textContent=T('recList');bar.style.width='85%';},15000);
-  let ok=false,lastError=null;
-  if(IS_STATIC){
-   clearTimeout(timer); mask.classList.remove('show');
-   bAlert(T('recStatic'));
-   return;
-  }
+/* ---------- AI 图片识别：前端压缩 + 健康检查唤醒 + 受控重试 + 失败保留 ---------- */
+function recSleep(ms){return new Promise(r=>setTimeout(r,ms));}
+function fileToDataURL(file){return new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.onerror=()=>rej(new Error('read'));r.readAsDataURL(file);});}
+/* 浏览器端压缩：最长边 1280、JPEG 0.8；原图仍用于页面展示 */
+function compressImage(file,maxEdge,quality){
+ return new Promise((resolve,reject)=>{
+  const url=URL.createObjectURL(file);
+  const img=new Image();
+  img.onload=()=>{
+   let w=img.width,h=img.height;
+   if(Math.max(w,h)>maxEdge){
+    if(w>=h){h=Math.round(h*maxEdge/w);w=maxEdge;}else{w=Math.round(w*maxEdge/h);h=maxEdge;}
+   }
+   const cv=document.createElement('canvas');cv.width=w;cv.height=h;
+   cv.getContext('2d').drawImage(img,0,0,w,h);
+   URL.revokeObjectURL(url);
+   resolve(cv.toDataURL('image/jpeg',quality));
+  };
+  img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('decode'));};
+  img.src=url;
+ });
+}
+/* 唤醒可能休眠的 Render 免费实例，最多约 100 秒 */
+async function waitForApiReady(onTick){
+ const MAX=100000,t0=Date.now();
+ while(Date.now()-t0<MAX){
+  try{
+   const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),8000);
+   const r=await fetch(API_BASE+'/api/health',{signal:ctrl.signal,cache:'no-store'});
+   clearTimeout(t);
+   if(r.ok){const j=await r.json().catch(()=>({}));if(j.status==='ok')return true;}
+  }catch(e){/* 冷启动中，继续等待 */}
+  onTick&&onTick(Math.round((Date.now()-t0)/1000));
+  await recSleep(4000);
+ }
+ return false;
+}
+/* 识别失败但保留照片：只显示原图，用户可继续手动添加 */
+function renderKeptPhoto(url){
+ const box=document.getElementById('recognizeBox');
+ box.style.display='block';
+ box.innerHTML='<div class="eyebrow" style="margin-top:0">'+T('recKeptTitle')+'</div><div class="anno-wrap"><img src="'+url+'"></div>';
+}
+let recognizing=false,lastPhotoFile=null;
+async function runRecognition(file){
+ const mask=document.getElementById('recMask');
+ const progress=document.getElementById('recProgress'),fail=document.getElementById('recFail');
+ const step=document.getElementById('recStep'),bar=document.getElementById('recBar');
+ const failMsg=document.getElementById('recFailMsg'),failImg=document.getElementById('recFailImg');
+ progress.style.display='block';fail.style.display='none';
+ mask.classList.add('show');
+ const setFail=msg=>{progress.style.display='none';fail.style.display='block';failMsg.textContent=msg;};
+ try{
+  bar.style.width='6%';step.textContent=T('recCompress');
+  let original;
+  try{ original=await fileToDataURL(file); }
+  catch(e){ mask.classList.remove('show');bAlert(T('recDecode'));return; }
+  let compressed;
+  try{ compressed=await compressImage(file,1280,0.8); }
+  catch(e){ mask.classList.remove('show');bAlert(T('recDecode'));return; }
+  if(IS_STATIC){ mask.classList.remove('show');bAlert(T('recStatic'));return; }
+  bar.style.width='15%';step.textContent=T('recWake');
+  const ready=await waitForApiReady(sec=>{step.textContent=TF('recWakeWait',{sec});});
+  if(!ready){failImg.src=original;setFail(T('recWakeTimeout'));return;}
+  let ok=false,j=null,lastMsg=T('recFailGeneric');
   for(let attempt=1;attempt<=2&&!ok;attempt++){
    try{
-    const res=await fetch(API_BASE+'/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:ev.target.result}),signal:AbortSignal.timeout(45000)});
-    const j=await res.json();
-    if(!res.ok)throw new Error(j.message||j.error||'AI recognition failed');
-    if(j.items&&j.items.length){ ok=true;
-     bar.style.width='100%'; step.textContent=T('recDone');
-     if(document.body.classList.contains('lowvision'))speak(TF('speakDone',{n:j.items.length}));
-     const before=S.items.length;
-     setTimeout(()=>{mask.classList.remove('show');
-      j.items.forEach(it=>addItem(it.name,ev.target.result,{size:it.size,vol:it.vol,kind:it.kind,ch:it.channel,bbox:it.bbox,fixed:it.fixed}));
-      renderRecognized(ev.target.result,S.items.slice(before));
-     },500);
-    }else if(attempt===1){ step.textContent=T('recRetry'); }
-   }catch(err){ lastError=err; ok=false; break; }
+    bar.style.width=attempt===1?'55%':'72%';step.textContent=T('recAI');
+    const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),70000);
+    let res;
+    try{
+     res=await fetch(API_BASE+'/api/recognize',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image:compressed}),signal:ctrl.signal});
+    }finally{clearTimeout(to);}
+    j=await res.json().catch(()=>null);
+    if(!res.ok){const err=new Error((j&&(j.message||j.error))||'AI recognition failed');err.status=res.status;throw err;}
+    if(j.items&&j.items.length){ok=true;}
+    else{
+     lastMsg=T('recEmpty');
+     if(attempt===1){step.textContent=T('recRetry');bar.style.width='45%';await recSleep(1200);}
+    }
+   }catch(err){
+    const status=err.status||0;
+    const retryable=status>=500||status===504||status===0||err.name==='AbortError'||/failed to fetch|network|load failed/i.test(err.message||'');
+    lastMsg=err.name==='AbortError'?T('recTimeout'):(status>=500?T('recBusy'):T('recFailGeneric'));
+    if(attempt===1&&retryable){step.textContent=T('recRetry');bar.style.width='40%';await recSleep(1500);}
+    else break;
+   }
   }
-  if(!ok){
-   clearTimeout(timer); mask.classList.remove('show');
-   bAlert(lastError&&lastError.message?lastError.message:T('recStatic'));
+  if(ok){
+   bar.style.width='100%';step.textContent=T('recDone');
+   if(document.body.classList.contains('lowvision'))speak(TF('speakDone',{n:j.items.length}));
+   const before=S.items.length;
+   setTimeout(()=>{
+    mask.classList.remove('show');
+    j.items.forEach(it=>addItem(it.name,original,{size:it.size,vol:it.vol,kind:it.kind,ch:it.channel,bbox:it.bbox,fixed:it.fixed}));
+    renderRecognized(original,S.items.slice(before));
+   },500);
+  }else{
+   failImg.src=original;setFail(lastMsg);
   }
- };rd.readAsDataURL(f);
+ }catch(e){
+  setFail(T('recFailGeneric'));
+ }
+}
+document.getElementById('photoInput').onchange=e=>{
+ const f=e.target.files[0];
+ if(!f)return;
+ lastPhotoFile=f;
+ if(recognizing)return;
+ recognizing=true;
+ const addBtn=document.getElementById('addPhoto');addBtn.disabled=true;
+ runRecognition(f).finally(()=>{recognizing=false;addBtn.disabled=false;e.target.value='';});
+};
+document.getElementById('recRetryBtn').onclick=()=>{
+ const f=lastPhotoFile;
+ if(!f){document.getElementById('recMask').classList.remove('show');return;}
+ if(recognizing)return;
+ recognizing=true;
+ runRecognition(f).finally(()=>{recognizing=false;});
+};
+document.getElementById('recKeepBtn').onclick=()=>{
+ const f=lastPhotoFile;
+ document.getElementById('recMask').classList.remove('show');
+ if(f)fileToDataURL(f).then(renderKeptPhoto).catch(()=>{});
 };
 function loadSeed(){
  S.items=SEED.map(s=>{
@@ -1094,6 +1192,7 @@ mapFurDesc:'Buy beds, desks and large items here.',mapMallDesc:'One-stop daily e
  s3eyebrow:'Step 3 · Prioritise by day',s3h1a:'What do you need',s3h1b:' on day one?',
  s3lead:'Drag cards to a day. Day 1 is for immediate needs; later days follow your trip count. Trash the rest.',
  s3why:'🤖 Why AI arranged it this way',s3read:'🔊 Read aloud',s3back:'← Back to items',s3ai:'⚡ AI Auto-sort',s3to4:'Dispose of unwanted items →',
+ emptyTripConfirm:'Empty trip detected: {days} has nothing to move. OK = remove these empty days (later days shift forward); Cancel = go back and arrange.',
  s4eyebrow:'Step 4 · What about the rest',s4h1a:'Give every item',s4h1b:' a decision.',
  s4lead:'Left decides new-home needs (take or rebuy), right decides local handling (sell/donate/recycle). Confirm below.',
  s4back:'← Back to days',s4ai:'✨ AI Suggestions',s4reset:'↺ Reset',s4to5:'Confirm & see the full plan →',
@@ -1141,6 +1240,12 @@ mapFurDesc:'Buy beds, desks and large items here.',mapMallDesc:'One-stop daily e
  noteWarn:'⚠️ Notice',noteOK:'Got it',noteDecide:'You decide',noteNo:'Cancel',noteYes:'OK',
  recUpload:'Uploading photo…',recAI:'AI is looking at the photo…',recList:'Organising the item list…',recDone:'Done!',recRetry:'Couldn\'t see it, trying again…',
  recStatic:'This web demo has no AI recognition service (photo recognition works in the local version). Tap "Start with sample room" for the full demo.',
+ recCompress:'Compressing the photo…',recWake:'Waking up the AI service…',recWakeWait:'Starting the server (first use can take a minute)… {sec}s',
+ recWakeTimeout:'The AI service is still starting. Please retry in a moment — your photo is kept.',
+ recDecode:'Could not read this image. Please choose another photo.',recTimeout:'Recognition timed out. Please retry.',
+ recBusy:'The AI service is busy. Please retry.',recFailGeneric:'Recognition failed. Please retry or add the items manually.',
+ recEmpty:'No items were spotted in this photo. You can retry or add items manually.',
+ recFailTitle:'Recognition did not succeed',recRetryBtn:'Retry recognition',recKeepBtn:'Keep photo & add manually',recKeptTitle:'Photo kept — add items manually',
  planStatic:'Web demo: AI notes unavailable (works locally). The plan is still generated by local rules.',
  noItems:'Add a few items first, or tap "Start with sample room"',
  aiWhyFast:'Sorted "move in fast": Day 1 gets {d1} — things you use the moment you arrive, so you can sleep, wash and work. The rest follow by need; decor and books go last.',
@@ -1183,6 +1288,7 @@ mapFurDesc:'可買床架、書桌等大件。',mapMallDesc:'一站式補足日�
  s3eyebrow:'Step 3 · 按緊急程度分天',s3h1a:'哪些',s3h1b:'當天就要用？',
  s3lead:'把卡片拖到對應天。Day1 馬上要用，後面幾天按趟數排，越往後越不急。不要的丟進垃圾桶。',
  s3why:'🤖 AI 為什麼這麼分',s3read:'🔊 朗讀',s3back:'← 返回改物品',s3ai:'⚡ AI 自動分天',s3to4:'處理不搬的東西 →',
+ emptyTripConfirm:'發現空趟：{days} 沒有放任何要搬的東西。確定 = 刪除這些空趟（後面天數自動前移），取消 = 返回整理。',
  s4eyebrow:'Step 4 · 不搬的東西怎麼辦',s4h1a:'每件',s4h1b:'都給個交代。',
  s4lead:'左邊決定新址需求（帶走或重買），右邊決定就地處理（賣/捐/回收）。選完點下面按鈕確認。',
  s4back:'← 返回分天',s4ai:'✨ 一鍵 AI 建議',s4reset:'↺ 清空重選',s4to5:'確認並看整體計劃 →',
@@ -1229,6 +1335,12 @@ mapFurDesc:'可買床架、書桌等大件。',mapMallDesc:'一站式補足日�
  editTip:'點擊編輯',ieSize:'尺寸（長×寬×高 cm）',ieVol:'體積（m³）',ieSave:'保存',ieCancel:'取消',ieDelete:'刪除',ieLen:'長',ieWid:'寬',ieHei:'高',
  noteWarn:'⚠️ 提示',noteOK:'知道了',noteDecide:'需要你決定',noteNo:'取消',noteYes:'確定',
  recUpload:'正在上傳照片…',recAI:'AI 正在看圖識別物品…',recList:'正在整理物品清單…',recDone:'識別完成！',recRetry:'沒看清，再試一次…',
+ recCompress:'正在壓縮照片…',recWake:'正在喚醒 AI 服務…',recWakeWait:'伺服器啟動中（首次使用約需一分鐘）…已等 {sec} 秒',
+ recWakeTimeout:'AI 服務仍在啟動，請稍後重試；照片已保留。',
+ recDecode:'無法讀取這張圖片，請換一張照片。',recTimeout:'識別逾時，請重試。',
+ recBusy:'AI 服務忙碌，請重試。',recFailGeneric:'識別失敗，請重試或手動添加物品。',
+ recEmpty:'這張照片沒有辨識到物品，可重試或手動添加。',
+ recFailTitle:'這次沒識別成功',recRetryBtn:'重試識別',recKeepBtn:'保留照片，手動添加',recKeptTitle:'照片已保留，請手動添加',
  recStatic:'網頁演示版沒有 AI 識別服務（拍照識別只在本地版可用）。請點「先用示例房間」看完整演示。',
  planStatic:'網頁演示版暫不提供 AI 說明（本地版可用）。計劃已按本地規則生成，功能不受影響。',
  noItems:'先加幾樣東西，或點「先用示例房間」',
@@ -1272,6 +1384,7 @@ mapFurDesc:'可买床架、书桌等大件。',mapMallDesc:'一站式补足日�
  s3eyebrow:'Step 3 · 按紧急程度分天',s3h1a:'哪些',s3h1b:'当天就要用？',
  s3lead:'把卡片拖到对应天。Day1 马上要用，后面几天按趟数排，越往后越不急。不要的丢进垃圾桶。',
  s3why:'🤖 AI 为什么这么分',s3read:'🔊 朗读',s3back:'← 返回改物品',s3ai:'⚡ AI 自动分天',s3to4:'处理不搬的东西 →',
+ emptyTripConfirm:'发现空趟：{days} 没有放任何要搬的东西。确定 = 删除这些空趟（后面天数自动前移），取消 = 返回整理。',
  s4eyebrow:'Step 4 · 不搬的东西怎么办',s4h1a:'每件',s4h1b:'都给个交代。',
  s4lead:'左边决定新址需求（带走或重买），右边决定就地处理（卖/捐/回收）。选完点下面按钮确认。',
  s4back:'← 返回分天',s4ai:'✨ 一键 AI 建议',s4reset:'↺ 清空重选',s4to5:'确认并看整体计划 →',
@@ -1318,6 +1431,12 @@ mapFurDesc:'可买床架、书桌等大件。',mapMallDesc:'一站式补足日�
  editTip:'点击编辑',ieSize:'尺寸（长×宽×高 cm）',ieVol:'体积（m³）',ieSave:'保存',ieCancel:'取消',ieDelete:'删除',ieLen:'长',ieWid:'宽',ieHei:'高',
  noteWarn:'⚠️ 提示',noteOK:'知道了',noteDecide:'需要你决定',noteNo:'取消',noteYes:'确定',
  recUpload:'正在上传照片…',recAI:'AI 正在看图识别物品…',recList:'正在整理物品清单…',recDone:'识别完成！',recRetry:'没看清，再试一次…',
+ recCompress:'正在压缩照片…',recWake:'正在唤醒 AI 服务…',recWakeWait:'服务器启动中（首次使用约需一分钟）…已等 {sec} 秒',
+ recWakeTimeout:'AI 服务仍在启动，请稍后重试；照片已保留。',
+ recDecode:'无法读取这张图片，请换一张照片。',recTimeout:'识别超时，请重试。',
+ recBusy:'AI 服务忙碌，请重试。',recFailGeneric:'识别失败，请重试或手动添加物品。',
+ recEmpty:'这张照片没有识别到物品，可重试或手动添加。',
+ recFailTitle:'这次没识别成功',recRetryBtn:'重试识别',recKeepBtn:'保留照片，手动添加',recKeptTitle:'照片已保留，请手动添加',
  recStatic:'网页演示版没有 AI 识别服务（拍照识别只在本地版可用）。请点「先用示例房间」看完整演示。',
  planStatic:'网页演示版暂不提供 AI 说明（本地版可用）。计划已按本地规则生成，功能不受影响。',
  noItems:'先加几样东西，或点「先用示例房间」',
@@ -1484,7 +1603,7 @@ tz.addEventListener('drop',e=>{e.preventDefault();tz.classList.remove('drop');co
 tz.addEventListener('click',()=>{document.getElementById('trashMask').classList.add('show');renderTrashList();});
 document.getElementById('closeTrash').onclick=()=>document.getElementById('trashMask').classList.remove('show');
 document.getElementById('trashMask').addEventListener('click',e=>{if(e.target.id==='trashMask')e.target.classList.remove('show');});
-document.getElementById('trashToStep4').onclick=()=>{document.getElementById('trashMask').classList.remove('show');go(4);renderModal();};
+document.getElementById('trashToStep4').onclick=()=>{document.getElementById('trashMask').classList.remove('show');go(5);};
 /* 垃圾桶弹窗列表：放回原处 */
 function renderTrashList(){
  const l=document.getElementById('trashList');l.innerHTML='';
@@ -1501,7 +1620,7 @@ function renderTrashList(){
    +'<button class="ghost" id="trashSkip" style="padding:10px 18px">'+T('trashSkip')+'</button>'
    +'</div></div>';
   document.getElementById('trashBack').onclick=()=>document.getElementById('trashMask').classList.remove('show');
-  document.getElementById('trashSkip').onclick=()=>{document.getElementById('trashMask').classList.remove('show');go(4);renderModal();};
+  document.getElementById('trashSkip').onclick=()=>{document.getElementById('trashMask').classList.remove('show');go(5);};
   return;
  }
  trash.forEach(it=>{
@@ -1516,17 +1635,18 @@ document.getElementById('to4').onclick=()=>{
  const empty=[];
  for(let i=1;i<=N;i++) if(!S.items.some(it=>it.bucket==='day'+i)) empty.push(i);
  if(empty.length){
-  const names=empty.map(i=>'Day '+i).join('、');
-  bConfirm('发现空趟：'+names+' 没有放任何要搬的东西。确定 = 删除这些空趟（后面天数自动前移），取消 = 返回整理。',()=>{
+  const sep=LANG==='en'?', ':'、';
+  const names=empty.map(i=>'Day '+i).join(sep);
+  bConfirm(TF('emptyTripConfirm',{days:names}),()=>{
    const dayMap={};let ni=0;
    for(let i=1;i<=N;i++){ if(empty.includes(i)) continue; ni++; dayMap[i]=ni; }
    S.items.forEach(it=>{if(it.bucket.startsWith('day')){it.bucket='day'+dayMap[+it.bucket.replace('day','')];}});
    S.trips=ni;
-   go(4);renderModal();
+   go(5);
   });
   return;
  }
- go(4);renderModal();
+ go(5);
 };
 /* AI 自动分天：按搬家目的 + 生活急需度分天，每天都有东西，不留空天 */
 function aiWhyText(){
@@ -1623,45 +1743,6 @@ document.getElementById('genPlan').onclick=async e=>{ const box=document.getElem
  }catch(err){ typeText(box,err&&err.message?err.message:T('planStatic')); }
 };
 document.getElementById('back3').onclick=()=>go(3);
-/* step4 处理页导航 */
-document.getElementById('back3d').onclick=()=>go(3);
-document.getElementById('aiFill2').onclick=()=>{
- S.items.filter(i=>i.bucket==='trash').forEach(i=>{
-  const s=suggestChannel(i);
-  i.plan=/随身电子|床品|衣/.test(i.kind||i._key||i.name)?'keep':'rebuy';
-  if(i.plan==='keep')i.day=1;
-  i.handle=/WEEE/.test(s.ch)?'recycle':/Carousell/.test(s.ch)?'sell':/救世军/.test(s.ch)?'donate':'recycle';
- });
- renderModal();
-};
-document.getElementById('resetDec2').onclick=()=>{
- S.items.filter(i=>i.bucket==='trash').forEach(i=>{i.plan='';i.handle='';i.day=null;i.ch=null;});
- renderModal();
-};
-document.getElementById('to5').onclick=()=>{
- const moving=S.items.filter(i=>i.bucket==='trash'&&i.plan==='keep'&&i.day);
- if(!moving.length){go(5);return;}
- const newById={};moving.forEach(i=>newById[i.id]=1);
- const days=[...new Set([...Object.values(S.trips?Array.from({length:S.trips},(_,k)=>k+1):[]),...moving.map(i=>i.day)])].sort((a,b)=>a-b);
- let cols='';
- days.forEach(d=>{
-  const existing=S.items.filter(i=>i.bucket==='day'+d);
-  const adds=moving.filter(i=>i.day===d);
-  if(!existing.length&&!adds.length)return;
-  cols+=`<div class="cf-col"><h4>Day ${d}</h4>`;
-  existing.forEach(i=>{cols+=`<div class="cf-item normal">${nm(i)} <small>${i.vol}m³</small></div>`;});
-  adds.forEach(i=>{cols+=`<div class="cf-item hl">${nm(i)} <small>${i.vol}m³ · ${T('cfNew')}</small></div>`;});
-  cols+='</div>';
- });
- document.getElementById('cfBox').innerHTML=`<h3>${T('cfHead')}</h3><p style="font-size:12px;color:var(--muted);margin:8px 0">${T('cfDesc')}</p><div class="cf-grid">${cols}</div>`;
- document.getElementById('cfMask').classList.add('show');
- document.getElementById('cfYes').onclick=()=>{
-  moving.forEach(i=>{i.bucket='day'+i.day;});
-  document.getElementById('cfMask').classList.remove('show');
-  go(5);
- };
- document.getElementById('cfNo').onclick=()=>document.getElementById('cfMask').classList.remove('show');
-};
 
 /* ---------- FAB + disposal modal ---------- */
 function renderModal(){ if(document.body.classList.contains('lowvision'))setTimeout(()=>speak(TF('speakS4',{n:S.items.filter(i=>i.bucket==='trash').length})),300);
@@ -1830,6 +1911,6 @@ buildDest();
 buildGoals();
 document.querySelector('#accSwitch button[data-acc=""]').classList.add('on');
 </script>
-<script src="journey.js"></script>
+<script src="journey.js?v=20261018g"></script>
 </body>
 </html>

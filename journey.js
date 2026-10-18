@@ -1,285 +1,748 @@
-/* Simplified journey: explicit dates, movable cards, fixed fixtures and linked shopping. */
-const jl=(hans,en,hant=hans)=>LANG==='en'?en:LANG==='zhHant'?hant:hans;
-const journey={filter:'all',mapCat:null,selected:null,dates:['2027-09-01','2027-09-02'],classified:false,mapMode:'all',arrangement:null,edited:false};
-DAY_LOCS.yln=DAY_LOCS.syl;DAY_LOCS.st=DAY_LOCS.stt;
-const FIXTURE=/窗户|窗戶|窗框|墙体|牆體|内置|內置|嵌入式柜|嵌入式櫃|固定橱柜|固定櫥櫃|墙上搁板|牆上擱板|window|built.in|wall.mounted shelf|^门$|^門$|^door$/i;
+/* ==========================================================================
+   LoopMove · journey.js
+   Compare More Options（拖拽分类 + AI 一次性分类分天 + 三区地点查询）
+   Moving Checklist（每日物品 + 每日紧凑打包方案）
+   统一状态模型：
+     it.bucket = day1..dayN | pending | buy | trash | fixed
+     it.handle = '' | sell | donate | recycle   （仅 bucket='trash' 时有效）
+     it.fixed  = true  → 固定设施，留在原处，不参与搬运/分类/打包
+   ========================================================================== */
+const jl=(h,e,p)=>LANG==='zhHans'?h:(LANG==='en'?e:(p||h));
+const journey={filter:'all',mapCat:null,selected:null,dates:['2027-09-01','2027-09-02'],classified:false,mapMode:'buy',arrangement:null,edited:false,arranging:false};
+
+const FIXTURE=/窗|窗帘|窗簾|帘|簾|杆|桿|嵌入式|暖气|暖氣|门|門|灶台|吊扇|顶灯|頂燈|插座|墙上搁板|牆上擱板|fixed|window|curtain|built-in|door|heater|ceiling/i;
+const DISPOSAL_HANDLES=['sell','donate','recycle'];
+const DISPOSAL_QUERIES={
+ sell:{tags:[['shop','secondhand']],icon:'💸',pin:'sell-pin'},
+ donate:{tags:[['shop','charity']],icon:'🎁',pin:'donate-pin'},
+ recycle:{tags:[['amenity','recycling']],icon:'♻️',pin:'recycle-pin'}
+};
+
+/* ---------------- 物品归一化 ---------------- */
 function normalizeItems(){
- S.trips=journey.dates.length;
- S.items.forEach(it=>{
-  if(it.handle==='stay')it.handle='';
-  if(it.fixedOverride===true||(it.fixedOverride!==false&&(it.fixed||FIXTURE.test(it._key||it.name)))){it.fixed=true;it.bucket='fixed';it.plan='';it.handle='';}
-  else if(it.bucket==='fixed')it.bucket='day1';
-  if(/^day/.test(it.bucket)&&+it.bucket.slice(3)>S.trips)it.bucket='day'+S.trips;
+ S.items.forEach(i=>{
+  if(!i.id)i.id=uid();
+  if(FIXTURE.test(i.name))i.fixed=true;
+  if(i.fixed){i.bucket='fixed';i.plan='';i.handle='';}
+  else if(i.plan==='rebuy'&&i.bucket==='day1')i.bucket='buy';
+  if(i.bucket==='trash'&&!DISPOSAL_HANDLES.includes(i.handle))i.handle='';
  });
 }
 function category(it){
- const name=(it.kind||'')+' '+(it._key||it.name);
- if(/家具|床品|装饰|裝飾|床|桌|椅|枕|被|窗帘|窗簾|沙发|沙發|rug|desk|chair|bed|pillow|curtain/i.test(name))return 'furniture';
- if(/玩具|文具|toy|stationery/i.test(name))return 'toys';
- if(/食物|食品|蔬|水果|food/i.test(name))return 'market';
- if(/洗漱|清洁|清潔|牙刷|soap/i.test(name))return 'convenience';
- return 'mall';
+ const hit=Object.entries(MAP_CATS).find(([k,v])=>it.kind.includes(v.cn)||it.kind.includes(v.en)||v.en.toLowerCase().includes(it.kind.toLowerCase()));
+ return hit?hit[0]:(it.kind==='零碎'?'convenience':'furniture');
 }
-function matchesFacility(f){return journey.mapMode!=='dispose'&&(!journey.mapCat||f.cat===journey.mapCat);}
-function refreshMap(){
- renderLegend();renderShopMatches();
- if(_gmap)renderGMap();else if(_map){renderMap();_map.invalidateSize();}
+function slotName(slot){
+ const m={
+  pending:jl('待处理','Pending','待處理'),
+  buy:jl('🛍️ 当地购买','🛍️ Buy locally','🛍️ 當地購買'),
+  trash:jl('🗑️ 不搬走','🗑️ Leave behind','🗑️ 不搬走'),
+  fixed:jl('🔧 固定设施（留在原处）','🔧 Fixed fixtures (stay in place)','🔧 固定設施（留在原處）')
+ };
+ if(m[slot])return m[slot];
+ return dayLabel(+slot.replace('day',''))||slot;
 }
-function focusShopping(it){journey.selected=it.id;journey.mapCat=category(it);_mv=null;_gmv=null;renderBoard();refreshMap();}
-renderLegend=function(){
- const lg=document.getElementById('mapLegend');lg.replaceChildren();
- [['all',null],...Object.entries(MAP_CATS)].forEach(([k,c])=>{
-  const b=document.createElement('button');b.className='lg'+((journey.mapCat===k||(!journey.mapCat&&k==='all'))?' on':'');
-  b.innerHTML=c?`<i style="background:${c.color}"></i>${c.icon} ${esc(T(c.k))}`:jl('全部','All','全部');
-  b.setAttribute('aria-pressed',String(c?journey.mapCat===k:!journey.mapCat));
-  b.onclick=()=>{journey.mapCat=c?k:null;journey.selected=null;_mv=null;_gmv=null;refreshMap();renderBoard();};lg.append(b);
- });
-};
-function renderShopMatches(){
- const cfg=DAY_LOCS[S.dest?.id]||DAY_LOCS.hsk;
- const item=S.items.find(i=>i.id===journey.selected);
- const out=document.getElementById('shopMatches');
- out.innerHTML='<b>'+esc(item?nm(item)+' → '+jl('购买地点','Places to buy','購買地點'):jl('附近购买地点','Nearby shops','附近購買地點'))+'</b>';
- cfg.facilities.filter(matchesFacility).forEach(f=>{
-  const c=MAP_CATS[f.cat];const a=document.createElement('a');a.className='shop-result';a.target='_blank';a.rel='noopener';a.href='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(t3(f.name)+' '+t3(f.addr));a.textContent=c.icon+' '+t3(f.name)+' ↗';out.append(a);
- });
- out.insertAdjacentHTML('beforeend','<p class="map-note">'+jl('演示地点 · 库存请向商家确认','Demo locations · Check stock with the shop','示範地點 · 庫存請向商家確認')+'</p>');
+function handleLabel(h){
+ return h==='sell'?jl('💸 转卖 Resell','💸 Resell','💸 轉賣 Resell')
+  :h==='donate'?jl('🎁 捐赠 Donate','🎁 Donate','🎁 捐贈 Donate')
+  :h==='recycle'?jl('♻️ 回收 Recycle','♻️ Recycle','♻️ 回收 Recycle'):slotName('pending');
 }
-function dateAt(offset){const d=new Date(document.getElementById('f-date').value+'T12:00:00');if(Number.isNaN(d.getTime()))return '';d.setDate(d.getDate()+offset);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
-function timelineSlots(){return journey.dates.map((_,i)=>'day'+(i+1)).sort((a,b)=>slotName(a).localeCompare(slotName(b)));}
-function slotName(slot){if(slot==='pending')return jl('待安排','To schedule','待安排');if(slot==='fixed')return jl('⚠️ 固定设施 · 留在原处','⚠️ Fixed · stays here','⚠️ 固定設施 · 留在原處');if(slot==='buy')return jl('当地购买','Buy locally','當地購買');if(slot==='trash')return jl('不带走','Leave behind','不帶走');return journey.dates[+slot.slice(3)-1]||jl('待安排','Unscheduled','待安排');}
-function moveItem(it,slot){if(it.fixed)return;it.bucket=slot;it.plan=slot==='buy'?'rebuy':'';if(!['buy','trash'].includes(slot))it.handle='';journey.edited=true;renderBoard();if(['buy','trash'].includes(slot)){selectMapFor(it);refreshMap();}}
-const ITEM_COLORS={furniture:['#1c5a3c','#e1eee5'],bedding:['#8056aa','#eee4f7'],electronics:['#2963a5','#e1ecfa'],daily:['#a76e12','#fff0ce'],decor:['#aa5369','#fae4eb']};
-function itemGroup(it){
- if(it.group&&ITEM_COLORS[it.group])return it.group;
- const n=(it.kind||'')+' '+(it._key||it.name);
- if(/枕|被|床品|pillow|quilt|bedding/i.test(n))return 'bedding';
- if(/电脑|電腦|电子|電子|手机|手機|laptop|phone/i.test(n))return 'electronics';
- if(/装饰|裝飾|绿植|綠植|画|畫|plant|art|rug/i.test(n))return 'decor';
- if(/家具|床架|桌|椅|柜|櫃|desk|chair|bed frame/i.test(n))return 'furniture';
- return 'daily';
+function timelineSlots(){return journey.dates.map((_,i)=>'day'+(i+1));}
+
+/* 统一状态变更：任何拖拽/选择都走这里，保证旧处理方式被清除 */
+function moveItem(it,slot,handle){
+ if(!it||it.fixed)return;
+ journey.edited=true;
+ if(String(slot).startsWith('day')){it.bucket=slot;it.plan='';it.handle='';}
+ else if(slot==='buy'){it.bucket='buy';it.plan='rebuy';it.handle='';}
+ else if(slot==='trash'){
+  it.bucket='trash';it.plan='';
+  it.handle=DISPOSAL_HANDLES.includes(handle)?handle:'';
+ }
+ else if(slot==='fixed'){it.fixed=true;it.bucket='fixed';it.plan='';it.handle='';}
+ else {it.bucket=slot;it.plan='';}
 }
-function card(it,editable=false){
- const c=document.createElement('button');const colors=ITEM_COLORS[itemGroup(it)];c.type='button';c.className='item'+(it.fixed?' fixed':'')+(journey.selected===it.id?' selected':'');c.style.setProperty('--category',colors[0]);c.style.setProperty('--tint',colors[1]);c.dataset.id=it.id;c.draggable=!it.fixed;
- const itemName=document.createElement('span');itemName.className='item-name';itemName.textContent=(it.fixed?'⚠️ ':'')+nm(it);c.append(itemName);if(!editable&&['buy','trash'].includes(it.bucket)){const badge=document.createElement('span');badge.className='place-emoji';badge.textContent=it.bucket==='buy'?MAP_CATS[category(it)].icon:'♻️';badge.title=it.bucket==='buy'?T(MAP_CATS[category(it)].k):jl('处理地点','Disposal locations','處理地點');c.append(badge);}
- c.onclick=()=>editable||it.fixed?openEditor(it):openItemDetails(it);
- c.addEventListener('dragstart',e=>{if(it.fixed){e.preventDefault();return;}e.dataTransfer.setData('text',it.id);e.dataTransfer.effectAllowed='move';});
- c.addEventListener('keydown',e=>{if(editable||it.fixed)return;const n=Number(e.key);if(n>=1&&n<=journey.dates.length){e.preventDefault();moveItem(it,'day'+n);}if(e.key==='Delete'){e.preventDefault();moveItem(it,'trash');}});
+
+/* 物品卡（三语，支持拖拽；fixed 不可拖） */
+function card(it){
+ const c=document.createElement('div');
+ c.className='item'+(it.fixed?' fixed':'')+(it.bucket==='trash'&&it.handle?' handled':'');
+ c.dataset.id=it.id;
+ if(!it.fixed){c.draggable=true;c.ondragstart=e=>e.dataTransfer.setData('text',it.id);}
+ c.ondblclick=()=>openItemDetails(it);
+ c.title=jl('双击查看详情','Double-click for details','雙擊查看詳情');
+ const tag=(it.bucket==='trash'&&it.handle)?' <span class="handle-tag">'+({sell:'💸',donate:'🎁',recycle:'♻️'}[it.handle])+'</span>':'';
+ c.innerHTML='<b>'+nm(it)+tag+'</b><small>'+esc(it.size)+' · '+it.vol+'m³</small>';
  return c;
 }
-renderItems=function(){normalizeItems();const list=document.getElementById('itemList');list.replaceChildren();S.items.forEach(it=>list.append(card(it,true)));document.querySelectorAll('.anno').forEach(a=>{const b=a.querySelector('b');if(b&&FIXTURE.test(b.textContent)&&!b.textContent.startsWith('⚠️'))b.textContent='⚠️ '+b.textContent;});};
-function renderTools(){
- const t=document.getElementById('timelineTools');t.replaceChildren();
- const add=document.createElement('button');add.className='filter-chip';add.textContent=jl('＋ 日期','＋ Date','＋ 日期');add.onclick=()=>{const last=new Date([...journey.dates].sort().at(-1)+'T12:00:00');last.setDate(last.getDate()+1);journey.dates.push(last.getFullYear()+'-'+String(last.getMonth()+1).padStart(2,'0')+'-'+String(last.getDate()).padStart(2,'0'));renderBoard();};t.append(add);
- const exportButton=document.createElement('button');exportButton.className='primary';exportButton.id='exportTxt';exportButton.textContent=jl('↓ 导出清单 TXT','↓ Export TXT','↓ 匯出清單 TXT');exportButton.onclick=downloadList;t.append(exportButton);
- const legend=document.createElement('div');legend.className='color-key';
- const labels=LANG==='en'?['Furniture','Bedding','Electronics','Daily items','Decor']:LANG==='zhHant'?['家具','床品','電子','日用','裝飾']:['家具','床品','电子','日用','装饰'];
- Object.entries(ITEM_COLORS).forEach(([key,colors],i)=>{const span=document.createElement('span');span.innerHTML='<i style="background:'+colors[1]+';border-color:'+colors[0]+'"></i>'+labels[i];legend.append(span);});t.append(legend);
-}
-function itemSlot(slot){
- const body=document.createElement('div');body.className='slots';body.dataset.col=slot;
- const items=S.items.filter(i=>i.bucket===slot);items.forEach(it=>body.append(card(it)));
- if(!items.length){const e=document.createElement('span');e.className='empty-slot';e.textContent=jl('拖到这里','Drop here','拖到這裡');body.append(e);}return body;
-}
-renderBoard=function(){
- normalizeItems();renderTools();renderArrangement();const board=document.getElementById('board');board.replaceChildren();board.style.setProperty('--days',journey.dates.length);const pending=S.items.filter(i=>i.bucket==='pending');let tray=document.getElementById('pendingItems');if(tray)tray.remove();if(pending.length){tray=document.createElement('section');tray.id='pendingItems';tray.innerHTML='<h3>'+jl('待安排','To schedule','待安排')+'</h3>';tray.append(itemSlot('pending'));document.getElementById('board').before(tray);}
- timelineSlots().forEach(slot=>{
-  const col=document.createElement('section');col.className='col day-column';col.dataset.col=slot;
-  const h=document.createElement('h3');const index=+slot.slice(3)-1;const input=document.createElement('input');input.type='date';input.value=journey.dates[index];input.setAttribute('aria-label',jl('修改日期','Change date','修改日期'));input.onchange=()=>{if(input.value){journey.dates[index]=input.value;renderBoard();}};h.append(input);
-  if(journey.dates.length>1){const del=document.createElement('button');del.textContent='×';del.setAttribute('aria-label',jl('删除日期','Remove date','刪除日期'));del.onclick=()=>{journey.dates.splice(index,1);S.items.forEach(it=>{if(it.bucket===slot)it.bucket='day1';else if(/^day/.test(it.bucket)&&+it.bucket.slice(3)>index+1)it.bucket='day'+(+it.bucket.slice(3)-1);});renderBoard();};h.append(del);}
-  col.append(h,itemSlot(slot));board.append(col);
- });
- const leave=document.createElement('section');leave.className='col leave-column';leave.dataset.col='trash';leave.innerHTML='<h3>♻️ '+slotName('trash')+'</h3>';const mapButton=document.createElement('button');mapButton.className='map-shortcut';mapButton.textContent='🗺️';mapButton.setAttribute('aria-label',jl('查看处理地图','Disposal map','查看處理地圖'));mapButton.onclick=()=>openServiceMap('dispose');leave.querySelector('h3').append(mapButton);
- ['buy','trash'].forEach(slot=>{const group=document.createElement('section');group.className='leave-group';group.dataset.col=slot;const h=document.createElement('h4');h.textContent=slot==='buy'?slotName('buy'):jl('处理','Disposal','處理');group.append(h,itemSlot(slot));leave.append(group);});
- const fixed=S.items.filter(i=>i.fixed);if(fixed.length){const row=document.createElement('div');row.className='fixed-strip';fixed.forEach(it=>row.append(card(it)));leave.append(row);}
- board.append(leave);renderPacking();if(typeof mapDock!=='undefined')restoreMap();
-};
-// Capture the drop before the legacy board handler; fixed fixtures cannot enter moving slots.
-document.getElementById('board').addEventListener('drop',e=>{e.preventDefault();e.stopImmediatePropagation();const col=e.target.closest('[data-col]');if(!col)return;col.classList.remove('drop');const it=S.items.find(i=>i.id===e.dataTransfer.getData('text'));if(it&&col.dataset.col!=='fixed')moveItem(it,col.dataset.col);},true);
-renderModal=function(){
- normalizeItems();const list=document.getElementById('dispList');list.replaceChildren();const items=S.items.filter(i=>['trash','buy'].includes(i.bucket));
- if(!items.length){list.textContent=jl('没有需要处理的物品','Nothing to handle','沒有需要處理的物品');return;}
- const actions=[['sell',jl('转卖','Sell','轉賣')],['donate',jl('捐赠','Donate','捐贈')],['recycle',jl('回收','Recycle','回收')]];
- [['',jl('待选择','Choose an action','待選擇')],...actions].forEach(([key,title])=>{
-  const groupItems=items.filter(i=>(i.handle||'')===key);if(!key&&!groupItems.length)return;
-  const group=document.createElement('section');group.className='disposal-group';group.dataset.handle=key;const h=document.createElement('h3');h.textContent=title+' · '+groupItems.length;group.append(h);
-  const cards=document.createElement('div');cards.className='disposal-cards';
-  groupItems.forEach(it=>{const c=document.createElement('article');c.className='disposal-card';const colors=ITEM_COLORS[itemGroup(it)];c.style.setProperty('--tint',colors[1]);c.style.setProperty('--category',colors[0]);const name=document.createElement('b');name.textContent=nm(it);c.append(name);const buttons=document.createElement('div');buttons.className='disposal-actions';
-   actions.forEach(([value,label])=>{const button=document.createElement('button');button.textContent=label;button.setAttribute('aria-label',nm(it)+' · '+label);button.setAttribute('aria-pressed',String(it.handle===value));button.onclick=()=>{it.handle=value;journey.edited=true;renderModal();};buttons.append(button);});c.append(buttons);cards.append(c);});group.append(cards);
-  if(key&&groupItems.length){group.append(disposalLinks({...groupItems[0],handle:key}));const map=document.createElement('button');map.className='group-map';map.textContent='🗺️ '+jl('查看地点','View locations','查看地點');map.onclick=()=>openServiceMap('dispose');group.append(map);}
-  list.append(group);
+
+/* ---------------- s2 物品清单（供 s3 之前预览） ---------------- */
+renderItems=function(){
+ const l=document.getElementById('itemList');l.innerHTML='';
+ normalizeItems();
+ S.items.forEach(it=>{
+  const el=document.createElement('div');
+  el.className='item'+(it.fixed?' fixed':'');
+  el.draggable=true;
+  el.ondragstart=e=>e.dataTransfer.setData('text',it.id);
+  el.innerHTML='<b>'+nm(it)+(it.fixed?' <span class="handle-tag">🔧</span>':'')+'</b><small>'+esc(it.size)+' · '+it.vol+'m³</small>';
+  el.ondblclick=()=>openItemDetails(it);
+  l.appendChild(el);
  });
 };
+
+/* ---------------- s3 Compare More Options：五区看板 ---------------- */
+const HANDLES_META=[
+ {h:'sell',icon:'💸',titleKey:'sell'},
+ {h:'donate',icon:'🎁',titleKey:'donate'},
+ {h:'recycle',icon:'♻️',titleKey:'recycle'}
+];
+function dropHint(){return '<div class="drop-empty">'+jl('拖到这里','Drop here','拖到這裡')+'</div>';}
+function makeHandleGroup(handle,icon,items){
+ const g=document.createElement('div');
+ g.className='drop-col handle-col '+handle+'-col';
+ g.dataset.col='trash';g.dataset.handle=handle;
+ const loc=document.createElement('button');
+ loc.className='loc-btn';loc.type='button';
+ loc.textContent='📍 '+jl('查附近地点','Find locations','查附近地點');
+ loc.onclick=ev=>{ev.stopPropagation();openServiceMap(handle);};
+ g.innerHTML='<h4>'+icon+' '+handleLabel(handle)+' <span class="count">'+items.length+'</span></h4>';
+ items.forEach(it=>g.append(card(it)));
+ if(!items.length)g.insertAdjacentHTML('beforeend',dropHint());
+ g.append(loc);
+ return g;
+}
+function renderBoard(){
+ normalizeItems();
+ const board=document.getElementById('board');
+ if(!board)return;
+ const N=S.trips;
+ const tools=document.getElementById('timelineTools');
+ if(tools)tools.replaceChildren();
+ board.innerHTML='';
+ /* 日期列 */
+ const dayCols=document.createElement('div');dayCols.className='day-cols';
+ dayCols.style.gridTemplateColumns='repeat('+N+',minmax(150px,1fr))';
+ for(let i=1;i<=N;i++){
+  const slot='day'+i,items=S.items.filter(x=>x.bucket===slot);
+  const v=items.reduce((a,x)=>a+x.vol,0);
+  const col=document.createElement('div');
+  col.className='drop-col day-col';col.dataset.col=slot;
+  col.innerHTML='<h3>'+dayLabel(i)+' <span class="v">'+v.toFixed(2)+'m³</span></h3>';
+  items.forEach(it=>col.append(card(it)));
+  if(!items.length)col.insertAdjacentHTML('beforeend',dropHint());
+  dayCols.append(col);
+ }
+ board.append(dayCols);
+ /* 去向列：Buy locally + Leave behind(pending/sell/donate/recycle) */
+ const leave=document.createElement('div');leave.className='leave-cols';
+ const buyItems=S.items.filter(x=>x.bucket==='buy');
+ const buyCol=document.createElement('div');
+ buyCol.className='drop-col leave-group buy-col';buyCol.dataset.col='buy';buyCol.dataset.handle='';
+ const buyLoc=document.createElement('button');buyLoc.className='loc-btn';buyLoc.type='button';
+ buyLoc.textContent='🛒 '+jl('附近购买','Shop nearby','附近購買');
+ buyLoc.onclick=ev=>{ev.stopPropagation();openServiceMap('buy');};
+ buyCol.innerHTML='<h3>🛍️ '+slotName('buy').replace('🛍️ ','')+' <span class="count">'+buyItems.length+'</span></h3>';
+ buyItems.forEach(it=>buyCol.append(card(it)));
+ if(!buyItems.length)buyCol.insertAdjacentHTML('beforeend',dropHint());
+ buyCol.append(buyLoc);
+ leave.append(buyCol);
+
+ const trash=S.items.filter(x=>x.bucket==='trash');
+ const lb=document.createElement('div');lb.className='leave-group leave-behind';
+ lb.innerHTML='<h3 class="lb-title">🗑️ '+jl('不搬走（选择处理方式）','Leave behind — choose how to handle','不搬走（選擇處理方式）')+'</h3>';
+ const pending=trash.filter(x=>!x.handle);
+ if(pending.length){
+  const pg=document.createElement('div');
+  pg.className='drop-col handle-col pending-col';pg.dataset.col='trash';pg.dataset.handle='';
+  pg.innerHTML='<h4>'+jl('待处理（拖到下方）','Pending — drag below','待處理（拖到下方）')+' <span class="count">'+pending.length+'</span></h4>';
+  pending.forEach(it=>pg.append(card(it)));
+  lb.append(pg);
+ }
+ const handleGrid=document.createElement('div');handleGrid.className='handle-grid';
+ DISPOSAL_HANDLES.forEach(h=>{
+  const icon=DISPOSAL_QUERIES[h].icon;
+  handleGrid.append(makeHandleGroup(h,icon,trash.filter(x=>x.handle===h)));
+ });
+ lb.append(handleGrid);
+ leave.append(lb);
+ board.append(leave);
+ /* 固定设施 */
+ const fixed=S.items.filter(x=>x.fixed);
+ if(fixed.length){
+  const fx=document.createElement('div');fx.className='fixed-strip';
+  fx.innerHTML='<h3>'+slotName('fixed')+'</h3>';
+  fixed.forEach(it=>fx.append(card(it)));
+  board.append(fx);
+ }
+ /* 统一拖拽（用 ondragover/ondrop 覆盖，避免重复绑定） */
+ board.ondragover=e=>{
+  const c=e.target.closest('[data-col]');
+  if(c&&!c.closest('.fixed-strip')){e.preventDefault();c.classList.add('over');}
+ };
+ board.ondragleave=e=>{const c=e.target.closest('[data-col]');if(c)c.classList.remove('over');};
+ board.ondrop=e=>{
+  const c=e.target.closest('[data-col]');
+  if(!c)return;
+  e.preventDefault();c.classList.remove('over');
+  const id=e.dataTransfer.getData('text');
+  const it=S.items.find(x=>x.id===id);
+  if(it&&!it.fixed){moveItem(it,c.dataset.col,c.dataset.handle||'');renderBoard();}
+ };
+ if(typeof mapDock!=='undefined')restoreMap();
+}
+
+/* ---------------- 打包估算（单一数据源，UI 与 TXT 共用） ---------------- */
+function packingFor(items){
+ const v={suitcase:0,soft:0,small:0,medium:0};
+ const large=[];
+ items.forEach(it=>{
+  if(it.fixed||it.bucket==='buy'||it.bucket==='trash')return;
+  const n=it.name||'';
+  if(/床|沙发|沙發|床垫|床墊|柜|櫃|桌|椅|sofa|mattress|wardrobe|table|bed|chair/i.test(n))large.push(it);
+  else if(/书|書|kitchen|厨具|廚具|杂物|雜物|厨具|廚具|books|misc/i.test(n))v.medium+=it.vol;
+  else if(/电子|电脑|電腦|装饰|裝飾|化妆品|化妝品|衣|clothes|decor|electronic|laptop|computer/i.test(n))v.small+=it.vol;
+  else if(/被|枕|褥|垫|墊|毯|pillow|blanket|linen|bedding|quilt/i.test(n))v.soft+=it.vol;
+  else v.suitcase+=it.vol;
+ });
+ const c={
+  suitcase:v.suitcase?Math.max(1,Math.ceil(v.suitcase/0.112)):0,
+  soft:v.soft?Math.max(1,Math.ceil(v.soft/0.095)):0,
+  small:v.small?Math.max(1,Math.ceil(v.small/0.036)):0,
+  medium:v.medium?Math.max(1,Math.ceil(v.medium/0.08)):0,
+  large:large.length
+ };
+ const namesFor=re=>items.filter(it=>re.test(it.name||'')).map(it=>nm(it)).slice(0,4).join('、');
+ const out=[];
+ if(c.suitcase)out.push({cls:'pk1',label:jl('28寸行李箱','28" suitcase','28寸行李箱'),n:c.suitcase,names:namesFor(/电子|电脑|電腦|衣|书|書|日常|clothes|laptop|electronic|computer|book|personal|行李|綠植|绿植|蘿|萝/i)});
+ if(c.soft)out.push({cls:'pk2',label:jl('软装袋','Soft bedding bag','軟裝袋'),n:c.soft,names:namesFor(/被|枕|褥|垫|墊|毯|pillow|blanket|linen|bedding|quilt/i)});
+ if(c.small)out.push({cls:'pk3',label:jl('加厚小箱','Reinforced small box','加厚小箱'),n:c.small,names:namesFor(/电子|电脑|電腦|装饰|裝飾|化妆品|化妝品|衣|clothes|decor|electronic|laptop|computer/i)});
+ if(c.medium)out.push({cls:'pk4',label:jl('中号纸箱','Medium carton','中號紙箱'),n:c.medium,names:namesFor(/书|書|kitchen|厨具|廚具|杂物|雜物|books|misc/i)});
+ if(c.large)out.push({cls:'pk5',label:jl('大件独立搬运','Large item (moved separately)','大件獨立搬運'),n:c.large,names:namesFor(/床|沙发|沙發|床垫|床墊|柜|櫃|桌|椅|sofa|mattress|wardrobe|table|bed|chair/i)});
+ return out;
+}
+function renderDayPacking(items){
+ const pk=packingFor(items);
+ if(!pk.length)return '<p class="pk-none">'+jl('这一天没有需要装箱的物品。','Nothing to pack for this day.','這一天沒有需要裝箱的物品。')+'</p>';
+ const rows=pk.map(r=>'<div class="pk-line"><span class="pk-thumb pk-'+r.cls+'" aria-hidden="true"></span>'
+  +'<span class="pk-meta"><b>'+esc(r.label)+' ×'+r.n+'</b>'+(r.names?'<small>'+esc(r.names)+'</small>':'')+'</span></div>').join('');
+ const note=jl('参考尺寸：28寸行李箱 75×50×30｜软装袋 60×45×35｜小箱 40×30×30｜中号纸箱 50×40×40；大件独立搬运。为参考估算，非精确测量。',
+  'Reference sizes: 28" suitcase 75×50×30｜soft bag 60×45×35｜small box 40×30×30｜medium carton 50×40×40; large items move separately. Estimates, not exact.',
+  '參考尺寸：28寸行李箱 75×50×30｜軟裝袋 60×45×35｜小箱 40×30×30｜中號紙箱 50×40×40；大件獨立搬運。為參考估算，非精確測量。');
+ return '<div class="pk-list">'+rows+'<p class="pk-note">'+note+'</p></div>';
+}
+
+/* ---------------- s5 Moving Checklist ---------------- */
 renderPlan=function(){
  normalizeItems();
- document.getElementById('planMeta').textContent=(S.dest?T('d_'+S.dest.id):jl('尚未选择目的地','No destination selected','尚未選擇目的地'))+' · '+jl('可返回调整，或下载随身查看','Adjust your plan or download it to take along','可返回調整，或下載隨身查看');
- const moving=S.items.filter(i=>/^day/.test(i.bucket));
- const unresolved=S.items.filter(i=>i.bucket==='pending'||(['buy','trash'].includes(i.bucket)&&!i.handle));
- document.getElementById('kpis').replaceChildren();
- [[moving.length,jl('带走物品','Items to move','帶走物品')],[S.items.filter(i=>['buy','trash'].includes(i.bucket)).length,jl('不带走物品','Leave behind','不帶走物品')],[unresolved.length,jl('待完善事项','Decisions remaining','待完善事項')]].forEach(([value,label])=>{const el=document.createElement('div');el.className='kpi';const b=document.createElement('b');b.textContent=value;const span=document.createElement('span');span.textContent=label;el.append(b,span);document.getElementById('kpis').append(el);});
- const days=document.getElementById('planDays');days.replaceChildren();
- [...timelineSlots(),'pending','buy','trash','fixed'].forEach(slot=>{
-  const items=S.items.filter(i=>i.bucket===slot);if(!items.length)return;
-  const section=document.createElement('section');section.className='plan-day';const h=document.createElement('h3');h.textContent=slotName(slot)+' · '+items.length;section.append(h);
-  items.forEach(it=>{const row=document.createElement('p');row.textContent='□ '+nm(it)+(['buy','trash'].includes(slot)?' → '+handleLabel(it.handle):'');section.append(row);});
-  if(/^day/.test(slot))packingFor(items).forEach(line=>{const p=document.createElement('p');p.className='map-note';p.textContent=line;section.append(p);});
-  days.append(section);
- });
- if(!S.items.length)days.textContent=jl('还没有物品，请先整理房间物品。','Add items to build your checklist.','還沒有物品，請先整理房間物品。');
-};
-function handleLabel(handle){return ({sell:jl('转卖','Sell','轉賣'),donate:jl('捐赠','Donate','捐贈'),recycle:jl('回收','Recycle','回收')})[handle]||jl('待选择处理方式','Handling to be decided','待選擇處理方式');}
-
-const baseGo=go;
-go=function(n){normalizeItems();baseGo(n);document.querySelectorAll('.steps [data-step]').forEach(b=>{b.classList.toggle('on',+b.dataset.step===(n===5?4:n));if(+b.dataset.step===(n===5?4:n))b.setAttribute('aria-current','step');else b.removeAttribute('aria-current');});document.title='LoopMove · '+T('nav'+n);if(n===2)renderItems();};
-function compactLabels(){
- const names=LANG==='en'?['Move details','Room inventory','Compare move options','Decide item destinations','Moving checklist']:LANG==='zhHant'?['設定搬家資訊','整理房間物品','對比搬運方案','安排物品去向','搬家行動清單']:['设置搬家信息','整理房间物品','对比搬运方案','安排物品去向','搬家行动清单'];
- names.forEach((label,i)=>{I18N[LANG]['nav'+(i+1)]=label;document.querySelector('#s'+(i+1)+' h1').textContent=label;});
- Object.assign(I18N[LANG],{s1cta:names[1]+' →',s2to3:names[2]+' →',s3to4:names[3]+' →',s4to5:jl('查看搬家清单 →','View moving checklist →','查看搬家清單 →'),s3back:'← '+names[1],s4back:'← '+names[2],s5back:'← '+names[2],s2example:jl('使用示例房间','Use sample room','使用示範房間'),mapTitle:jl('附近购买','Shop nearby','附近購買'),mapHint:jl('颜色与物品分类对应','Colors match item categories','顏色與物品分類對應'),s5trashh3:jl('物品处理','Disposal','物品處理')});
+ if(document.body.classList.contains('lowvision'))setTimeout(()=>speak(TF('speakPlan',{n:S.trips})),300);
+ const N=S.trips;
+ const move=S.items.filter(i=>i.bucket.startsWith('day'));
+ const total=move.reduce((a,i)=>a+i.vol,0);
+ document.getElementById('planMeta').textContent=TF('s5meta',{d:S.dest?T('d_'+S.dest.id):'—',n:N});
+ const k=document.getElementById('kpis');
+ k.innerHTML='<div class="kpi"><b>'+move.length+'</b><span>'+T('s5k1')+'</span></div>'
+  +'<div class="kpi"><b>'+total.toFixed(2)+'m³</b><span>'+TF('s5k2',{n:N})+'</span></div>'
+  +'<div class="kpi"><b>'+(total/N).toFixed(2)+'m³</b><span>'+T('s5k3')+'</span></div>';
+ const pd=document.getElementById('planDays');pd.innerHTML='';
+ for(let i=1;i<=N;i++){
+  const key='day'+i,its=S.items.filter(x=>x.bucket===key);
+  const v=its.reduce((a,x)=>a+x.vol,0);
+  const list=its.length
+   ?its.map(x=>'<label class="plan-check"><input type="checkbox"><span>· '+nm(x)+' <small class="mono" style="color:var(--muted)">'+x.vol+'m³</small></span></label>').join('')
+   :'<p style="font-size:13px;color:var(--muted)">'+T('s5empty')+'</p>';
+  pd.insertAdjacentHTML('beforeend',
+   '<div class="plan-day"><h3>Day '+i+' · '+dayLabel(i)+'</h3><div class="vol">'+its.length+' '+T('s5pcs')+' · '+v.toFixed(2)+'m³</div>'
+   +list+'<div class="trip">'+TF('s5trip',{v:v.toFixed(2)})+'</div>'
+   +'<div class="pk-block"><h4 class="pk-title">📦 '+jl('当天打包方案','Packing for this day','當天打包方案')+'</h4>'+renderDayPacking(its)+'</div></div>');
+ }
+ /* 不带走物品：Buy / Resell / Donate / Recycle + 固定设施 */
+ const pt=document.getElementById('planTrash');
+ const buy=S.items.filter(x=>x.bucket==='buy');
+ const fixed=S.items.filter(x=>x.fixed);
+ let html='';
+ const renderGroup=(title,arr,svc)=>{
+  if(!arr.length)return '';
+  let s='<div class="trash-group"><h4>'+title+'</h4>';
+  arr.forEach(x=>{s+='<div style="font-size:15px;padding:3px 0">· '+nm(x)+'</div>';});
+  if(svc)s+='<div class="svc-links">'+svc+'</div>';
+  return s+'</div>';
+ };
+ html+=renderGroup(jl('🛍️ 当地购买','🛍️ Buy locally','🛍️ 當地購買'),buy,
+  '<a target="_blank" rel="noopener" href="https://www.google.com/maps/search/'+encodeURIComponent((S.dest?jl('家具 家居','furniture homeware','家具 家居'):'furniture'))+'">'+jl('地图搜附近购买','Search nearby shops on map','地圖搜附近購買')+' ↗</a>');
+ html+=renderGroup(jl('💸 转卖','💸 Resell','💸 轉賣'),S.items.filter(x=>x.bucket==='trash'&&x.handle==='sell'),serviceLinks('sell'));
+ html+=renderGroup(jl('🎁 捐赠','🎁 Donate','🎁 捐贈'),S.items.filter(x=>x.bucket==='trash'&&x.handle==='donate'),serviceLinks('donate'));
+ html+=renderGroup(jl('♻️ 回收','♻️ Recycle','♻️ 回收'),S.items.filter(x=>x.bucket==='trash'&&x.handle==='recycle'),serviceLinks('recycle'));
+ const pendingTrash=S.items.filter(x=>x.bucket==='trash'&&!x.handle);
+ html+=renderGroup(jl('待处理','Pending','待處理'),pendingTrash);
+ html+=renderGroup(slotName('fixed'),fixed);
+ pt.innerHTML=html||'<p style="font-size:13px;color:var(--muted)">'+T('s5nothing')+'</p>';
 }
-const baseApplyLang=applyLang;applyLang=function(){compactLabels();baseApplyLang();const step=document.querySelector('.screen.on')?.id.slice(1)||'1';document.title='LoopMove · '+T('nav'+step);};
-document.querySelectorAll('.steps [data-step]').forEach(b=>b.onclick=()=>go(+b.dataset.step));
-document.getElementById('to2').onclick=()=>go(2);
-document.getElementById('to3').onclick=chooseArrangement;
-document.getElementById('to5').onclick=()=>go(5);
-document.getElementById('f-date').addEventListener('change',()=>{if(document.getElementById('f-date').value)journey.dates=journey.dates.map((_,i)=>dateAt(i));});
-const baseBuildDest=buildDest;buildDest=function(){baseBuildDest();document.querySelectorAll('#destGrid .dest').forEach((b,i)=>{b.classList.toggle('sel',DESTS[i].id===S.dest?.id);b.addEventListener('click',()=>{_mv=null;_gmv=null;});});};
-const fixtureField=document.createElement('label');fixtureField.className='fixture-field';
-const fixtureCheck=document.createElement('input');fixtureCheck.type='checkbox';fixtureCheck.id='fixtureCheck';fixtureField.append(fixtureCheck,document.createTextNode(' ⚠️ '+jl('固定设施 · 留在原处','Fixed fixture · stays here','固定設施 · 留在原處')));document.getElementById('ieName').parentElement.after(fixtureField);
-const baseEditor=openEditor;openEditor=function(it){baseEditor(it);fixtureCheck.checked=!!it.fixed;};
-const baseSave=document.getElementById('ieSave').onclick;document.getElementById('ieSave').onclick=()=>{if(ieCurrent){ieCurrent.group=null;ieCurrent.classified=false;ieCurrent._key=null;ieCurrent.fixed=fixtureCheck.checked;ieCurrent.fixedOverride=fixtureCheck.checked;}baseSave();if(document.getElementById('s3').classList.contains('on'))renderBoard();};
-applyLang();buildDest();go(1);
 
-popupHtml=function(f,c){return '<b>'+esc(t3(f.name))+'</b><p>'+c.icon+' '+esc(T(c.k))+'</p><small>'+esc(t3(f.addr))+'</small>';};
-let mapPending=false;
-ensureMap=function(){if(document.getElementById('mapCard').hidden)return;if(_gmap){renderGMap();return;}if(_map){renderMap();_map.invalidateSize();return;}if(mapPending)return;mapPending=true;loadLeaflet(()=>{if(!_map)initLeaflet(DAY_LOCS[S.dest?.id]||DAY_LOCS.hsk);mapPending=false;});};
+/* 服务入口链接（真实官方/平台，不编造门店） */
+function serviceLinks(handle){
+ const links={
+  sell:[['Carousell','https://www.carousell.com.hk/'],['闲鱼','https://www.goofish.com/']],
+  donate:[['Salvation Army 救世军','https://www.salvationarmy.org.hk/']],
+  recycle:[['香港官方回收地图','https://www.wastereduction.gov.hk/zh-hk/recycling-map'],['绿在区区 Green@Community','https://www.wastereduction.gov.hk/zh-hk/']]
+ }[handle]||[];
+ return links.map(([label,url])=>'<a target="_blank" rel="noopener" href="'+url+'">'+label+' ↗</a>').join(' ');
+}
 
-// Keep four decision steps; the checklist is a separate final result.
-document.querySelector('[data-step="5"]').remove();
-document.getElementById('s5').hidden=false;
-const drawer=document.createElement('dialog');drawer.id='itemDrawer';drawer.innerHTML='<div class="drawer-heading"><h2 id="detailTitle"></h2><button id="closeDetails" aria-label="Close">×</button></div><div id="detailActions"></div><div id="detailBody"></div>';
-document.body.append(drawer);document.getElementById('closeDetails').onclick=()=>{drawer.close();restoreMap();};drawer.addEventListener('close',restoreMap);
-const mapCard=document.getElementById('mapCard');mapCard.hidden=false;
-function showDialog(el){if(el.showModal)el.showModal();else el.setAttribute('open','');}
+/* ---------------- TXT 导出（与页面打包数量一致） ---------------- */
+function exportText(){
+ normalizeItems();
+ const lines=['LoopMove · '+jl('搬家行动清单','Moving checklist','搬家行動清單'),
+  S.dest?T('d_'+S.dest.id):'',
+  jl('生成日期','Generated','生成日期')+': '+new Date().toLocaleString(),
+  ''];
+ const N=S.trips;
+ for(let i=1;i<=N;i++){
+  const key='day'+i,items=S.items.filter(x=>x.bucket===key);
+  const v=items.reduce((a,x)=>a+x.vol,0);
+  lines.push('Day '+i+' · '+dayLabel(i)+' ('+items.length+' '+jl('件','items','件')+', '+v.toFixed(2)+'m³)');
+  items.forEach(x=>lines.push('  [ ] '+nm(x)+' '+x.size+' '+x.vol+'m³'));
+  const pk=packingFor(items);
+  pk.forEach(r=>lines.push('  📦 '+r.label+' ×'+r.n));
+  lines.push('');
+ }
+ const group=(title,arr,handle)=>{
+  if(!arr.length)return;
+  lines.push(title);
+  arr.forEach(x=>lines.push('  • '+nm(x)+(handle?' → '+handleLabel(handle):'')));
+  const svc=handle?({sell:'Carousell https://www.carousell.com.hk/',donate:'Salvation Army https://www.salvationarmy.org.hk/',recycle:'Recycling map https://www.wastereduction.gov.hk/zh-hk/recycling-map'}[handle]||''):'';
+  if(svc)lines.push('    '+svc);
+  lines.push('');
+ };
+ group(jl('🛍️ 当地购买','🛍️ Buy locally','🛍️ 當地購買'),S.items.filter(x=>x.bucket==='buy'),null);
+ group(jl('💸 转卖','💸 Resell','💸 轉賣'),S.items.filter(x=>x.bucket==='trash'&&x.handle==='sell'),'sell');
+ group(jl('🎁 捐赠','🎁 Donate','🎁 捐贈'),S.items.filter(x=>x.bucket==='trash'&&x.handle==='donate'),'donate');
+ group(jl('♻️ 回收','♻️ Recycle','♻️ 回收'),S.items.filter(x=>x.bucket==='trash'&&x.handle==='recycle'),'recycle');
+ group(jl('待处理','Pending','待處理'),S.items.filter(x=>x.bucket==='trash'&&!x.handle),null);
+ group(slotName('fixed'),S.items.filter(x=>x.fixed),null);
+ lines.push(jl('装箱数量为粗估，请核对箱子内尺寸及承重。','Packing counts are estimates. Check internal dimensions and weight limits.','裝箱數量為粗估，請核對箱子內尺寸及承重。'));
+ return lines.join('\n');
+}
+
+/* ================= 物品详情抽屉（点卡片：移动/处理 + 地图） ================= */
+const drawer=document.createElement('dialog');drawer.id='itemDrawer';
+drawer.innerHTML='<div class="drawer-heading"><h2 id="detailTitle"></h2><button id="closeDetails" aria-label="Close">×</button></div><div id="detailActions"></div><div id="detailBody"></div>';
+document.body.append(drawer);
+document.getElementById('closeDetails').onclick=()=>{drawer.close();restoreMap();};
+drawer.addEventListener('close',restoreMap);
 function disposalLinks(it){
- const box=document.createElement('div');box.className='station-links';
- const types=it.handle==='sell'?['Carousell','闲鱼']:it.handle==='donate'?['救世军物资捐赠']:it.handle==='stay'?[]:[/电|電|冰箱|洗衣/.test(it.kind+' '+it.name)?'欧绿保 WEEE':'绿在区区'];
- CHANNELS.filter(c=>types.includes(c.name)).forEach(c=>{const a=document.createElement('a');a.href=c.url;a.target='_blank';a.rel='noopener';a.textContent=c.name+' ↗';box.append(a);});
- if(types.length){const note=document.createElement('small');note.textContent=jl('服务入口 · 站点与收件条件请确认','Service directory · Confirm location and accepted items','服務入口 · 請確認站點及收件條件');box.append(note);}return box;
+ const wrap=document.createElement('div');wrap.className='disposal-links';
+ const links=[];
+ if(it.handle==='sell')links.push(['Carousell','https://www.carousell.com.hk/']);
+ if(it.handle==='donate')links.push(['救世军','https://www.salvationarmy.org.hk/']);
+ if(it.handle==='recycle')links.push(['官方回收地图','https://www.wastereduction.gov.hk/zh-hk/recycling-map']);
+ links.push(['Google Maps','https://www.google.com/maps/search/?api=1&query='+encodeURIComponent((it.name||'')+' '+(S.dest?jl('香港','Hong Kong','香港'):''))]);
+ links.forEach(([label,url])=>{const a=document.createElement('a');a.className='dlink';a.target='_blank';a.rel='noopener';a.href=url;a.textContent=label+' ↗';wrap.append(a);});
+ return wrap;
 }
 function openItemDetails(it){
- journey.selected=it.id;document.getElementById('detailTitle').textContent=nm(it);const actions=document.getElementById('detailActions');actions.replaceChildren();
- const old=document.getElementById('stationDetails');if(old)old.remove();document.getElementById('detailBody').append(mapCard);mapCard.hidden=false;selectMapFor(it);
- if(it.bucket==='trash'){
+ normalizeItems();
+ document.getElementById('detailTitle').textContent=nm(it);
+ const actions=document.getElementById('detailActions');actions.replaceChildren();
+ const old=document.getElementById('stationDetails');if(old)old.remove();
+ document.getElementById('detailBody').append(mapCard);mapCard.hidden=false;
+ selectMapFor(it);
+ if(!it.fixed){
+  const move=document.createElement('select');
+  [...timelineSlots(),'buy','trash','fixed'].forEach(slot=>{
+   const o=document.createElement('option');o.value=slot;o.textContent=slotName(slot);o.selected=it.bucket===slot;move.append(o);
+  });
+  move.onchange=()=>{moveItem(it,move.value);drawer.close();restoreMap();renderBoard();};
+  actions.append(move);
+  if(it.bucket==='trash'){
+   [['sell',jl('转卖','Resell','轉賣')],['donate',jl('捐赠','Donate','捐贈')],['recycle',jl('回收','Recycle','回收')]].forEach(([v,label])=>{
+    const b=document.createElement('button');b.textContent=label;b.className=it.handle===v?'primary':'';
+    b.onclick=()=>{it.bucket='trash';it.plan='';it.handle=v;renderBoard();openItemDetails(it);};
+    actions.append(b);
+   });
+  }
   const section=document.createElement('div');section.id='stationDetails';
-  [['recycle',jl('回收','Recycle')],['donate',jl('捐赠','Donate','捐贈')],['sell',jl('转卖','Sell','轉賣')]].forEach(([v,label])=>{const b=document.createElement('button');b.textContent=label;b.className=it.handle===v?'primary':'';b.onclick=()=>{it.handle=v;openItemDetails(it);};actions.append(b);});section.append(disposalLinks(it));document.getElementById('detailBody').append(section);
- }else{renderShopMatches();}
- // A compact alternative to drag for touch/keyboard users lives in details, not every card.
- const move=document.createElement('select');move.setAttribute('aria-label',jl('移动物品','Move item','移動物品'));
- [...timelineSlots(),'buy','trash'].forEach(slot=>{const o=document.createElement('option');o.value=slot;o.textContent=slotName(slot);o.selected=it.bucket===slot;move.append(o);});move.onchange=()=>{moveItem(it,move.value);drawer.close();restoreMap();};actions.append(move);
- if(!drawer.open)showDialog(drawer);if(!mapCard.hidden){ensureMap();refreshMap();}
+  section.append(disposalLinks(it));
+  document.getElementById('detailBody').append(section);
+ }
+ if(!drawer.open)showDialog(drawer);
+ if(!mapCard.hidden){_mv=null;_gmv=null;ensureMap();refreshMap();}
 }
-function packingFor(items){
- const groups={suitcase:[],soft:[],small:[],medium:[],large:[]};
- items.forEach(it=>{const n=(it.kind||'')+' '+(it._key||it.name);if(/家具|床架|桌|椅|柜|櫃|大家电|desk|chair|bed frame/i.test(n)){groups.large.push(it);return;}if(/床品|枕|被|pillow|quilt/i.test(n)){groups.soft.push(it);return;}if(/衣|行李|suitcase|clothes/i.test(n)){groups.suitcase.push(it);return;}if(/书|書|电子|電子|电脑|電腦|laptop|book/i.test(n)){groups.small.push(it);return;}groups.medium.push(it);});
- const count=(list,capacity)=>Math.max(1,Math.ceil(list.reduce((n,it)=>n+(Number(it.vol)||0.02),0)/capacity));
- const lines=[];const names=list=>list.map(nm).join('、');
- if(groups.suitcase.length)lines.push(jl('26–28 英寸行李箱','26–28 inch suitcase','26–28 吋行李箱')+' × '+count(groups.suitcase,.075)+' → '+names(groups.suitcase));
- if(groups.soft.length)lines.push(jl('60×45×35 cm 软装袋','60×45×35 cm bedding bag','60×45×35 cm 寢具袋')+' × '+count(groups.soft,.075)+' → '+names(groups.soft));
- if(groups.small.length)lines.push(jl('40×30×30 cm 加厚小箱','40×30×30 cm reinforced small box','40×30×30 cm 加厚小箱')+' × '+count(groups.small,.028)+' → '+names(groups.small));
- if(groups.medium.length)lines.push(jl('50×40×40 cm 纸箱','50×40×40 cm carton','50×40×40 cm 紙箱')+' × '+count(groups.medium,.064)+' → '+names(groups.medium));
- if(groups.large.length)lines.push(jl('独立搬运 · 护角＋搬家毯','Move separately · corner guards + moving blankets','獨立搬運 · 護角＋搬家毯')+' → '+names(groups.large));
- return lines;
+
+/* ================= 地图：购买/转卖/捐赠/回收 四区 + 三区 Overpass ================= */
+const mapDock=document.createElement('aside');mapDock.id='mapDock';
+document.querySelector('#s3 .days-wrap').append(mapDock);
+mapDock.append(mapCard);
+const mapTabs=document.createElement('div');mapTabs.id='mapModes';mapCard.prepend(mapTabs);
+function showDialog(el){if(el.showModal)el.showModal();else el.setAttribute('open','');}
+function restoreMap(){if(drawer.open)return;mapDock.append(mapCard);mapCard.hidden=false;if(document.getElementById('s3').classList.contains('on')){ensureMap();refreshMap();}}
+function selectMapFor(it){
+ journey.selected=it.id;
+ if(it.bucket==='trash'&&DISPOSAL_HANDLES.includes(it.handle)){journey.mapMode=it.handle;journey.mapCat=null;}
+ else if(it.bucket==='buy'){journey.mapMode='buy';journey.mapCat=category(it);}
+ else{journey.mapMode='buy';journey.mapCat=null;}
+ _mv=null;_gmv=null;
 }
-const packing=document.createElement('section');packing.id='packingGuide';document.querySelector('#s3 .days-wrap').after(packing);
-function renderPacking(){
- packing.innerHTML='<h2>✨ '+jl('AI 专项建议','AI packing guide','AI 專項建議')+'</h2><p class="packing-intro">'+jl('怎么装，更好搬','Pack for an easier move','怎樣裝，更好搬')+'</p>';
- const grid=document.createElement('div');grid.className='packing-cards';
- const lines=packingFor(S.items.filter(i=>/^day/.test(i.bucket)));
- lines.forEach(line=>{const type=line.includes('26–28')?'suitcase':/60×45/.test(line)?'bag':/40×30/.test(line)?'small':/50×40/.test(line)?'box':'large';
- const labels={suitcase:jl('大号行李箱','Large suitcase','大號行李箱'),bag:jl('床品收纳袋','Bedding bag','寢具收納袋'),small:jl('加厚小箱','Small sturdy box','加厚小箱'),box:jl('中号纸箱','Medium carton','中號紙箱'),large:jl('大件单独保护','Protect bulky items','大件獨立保護')};
- const tips={suitcase:jl('衣物随身，常用物品放上层','Keep everyday clothing on top','衣物隨身，常用物品放上層'),bag:jl('枕被集中装，柔软不挤坏','Keep pillows and bedding together','枕被集中裝，柔軟不擠壞'),small:jl('书本少量分装，电子产品加缓冲','Split heavy books; cushion electronics','書本少量分裝，電子產品加緩衝'),box:jl('日用品分组，箱外写好名称','Group daily items and label the box','日用品分組，箱外寫好名稱'),large:jl('桌椅加护角，家具包搬家毯','Use corner guards and moving blankets','桌椅加護角，家具包搬家毯')};
- const c=document.createElement('article');c.className='packing-card';c.innerHTML='<div class="packing-photo '+type+'" role="img" aria-label="'+labels[type]+' · '+jl('写实参考图','Photorealistic reference','寫實參考圖')+'"></div><h3>'+labels[type]+(line.match(/× (\d+)/)?' × '+line.match(/× (\d+)/)[1]:'')+'</h3><p>'+tips[type]+'</p>';
- const size=document.createElement('p');size.className='packing-size';const sizes={suitcase:jl('28 英寸 · 约 75×50×30 cm','28 inch · about 75×50×30 cm','28 吋 · 約 75×50×30 cm'),bag:jl('大号 · 约 60×45×35 cm','Large · about 60×45×35 cm','大號 · 約 60×45×35 cm'),small:jl('小号 · 约 40×30×30 cm','Small · about 40×30×30 cm','小號 · 約 40×30×30 cm'),box:jl('中号 · 约 50×40×40 cm','Medium · about 50×40×40 cm','中號 · 約 50×40×40 cm'),large:jl('按家具大小选搬家毯与护角','Choose blankets and guards to fit','按家具大小選搬家毯與護角')};size.textContent=sizes[type];c.append(size);const names=document.createElement('small');names.textContent=line.split(' → ')[1]||'';c.append(names);grid.append(c);});packing.append(grid);
- const note=document.createElement('small');note.className='packing-note';note.textContent=jl('AI 生成参考图 · 尺寸为选购参考，装箱前核对实际内尺寸与承重','AI-generated reference photos · Check actual interior dimensions and weight limits','AI 生成參考圖 · 尺寸為選購參考，裝箱前核對實際內尺寸與承重');packing.append(note);
+function mapTabTitle(mode){
+ return ({buy:jl('🛍️ 购买','🛍️ Buy','🛍️ 購買'),sell:jl('💸 二手店','💸 Resell shops','💸 二手店'),donate:jl('🎁 捐赠点','🎁 Donation points','🎁 捐贈點'),recycle:jl('♻️ 回收点','♻️ Recycling points','♻️ 回收點')})[mode]||mode;
 }
-function packingDrawing(type){const inside=type==='suitcase'?'<rect x="43" y="13" width="34" height="13" rx="5"/><rect x="28" y="27" width="64" height="62" rx="10"/><path d="M45 40v35m30-35v35"/><circle cx="40" cy="94" r="4"/><circle cx="80" cy="94" r="4"/>':type==='bag'?'<path d="M25 40Q60 27 95 40L101 83Q60 98 19 83Z"/><path d="M42 36V24h36v12M23 55h74"/>':type==='large'?'<path d="M22 35h76v12H22zM30 47v44m60-44v44M42 35V18h36v17"/><path d="M20 57l24-8 10 37-25 7z"/>':'<path d="M20 34l40-17 40 17v49L60 101 20 83zM20 34l40 18 40-18M60 52v49M40 25l40 18v18"/>';return '<svg class="packing-art '+type+'" viewBox="0 0 120 110" role="img" aria-label="'+type+'" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round">'+inside+'</svg>';}
-function exportText(){normalizeItems();const lines=['LoopMove · '+jl('搬家行动清单','Moving checklist','搬家行動清單'),S.dest?T('d_'+S.dest.id):'',jl('待完善事项','Decisions remaining','待完善事項')+': '+S.items.filter(i=>i.bucket==='pending'||(['buy','trash'].includes(i.bucket)&&!i.handle)).length, ''];[...timelineSlots(),'pending','buy','trash','fixed'].forEach(slot=>{const items=S.items.filter(i=>i.bucket===slot);lines.push(slotName(slot),...items.map(i=>'• '+nm(i)+(i.handle?' → '+({recycle:jl('回收','Recycle'),donate:jl('捐赠','Donate','捐贈'),sell:jl('转卖','Sell','轉賣'),stay:jl('留下','Leave')}[i.handle]):['trash','buy'].includes(slot)?' → '+jl('待处理','Pending','待處理'):'')));if(slot.startsWith('day'))lines.push(...packingFor(items));if(slot==='buy'&&items.length){const cats=new Set(items.map(category));(DAY_LOCS[S.dest?.id]||DAY_LOCS.hsk).facilities.filter(f=>cats.has(f.cat)).forEach(f=>lines.push(t3(f.name)+' — https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(t3(f.name)+' '+t3(f.addr))));}lines.push('');});lines.push('https://www.wastereduction.gov.hk/zh-hk/recycling-map');lines.push(jl('装箱数量为粗估，请核对箱子内尺寸及承重。','Packing counts are estimates. Check internal dimensions and weight limits.','裝箱數量為粗估，請核對箱子內尺寸及承重。'));return lines.join('\n');}
-function downloadList(){const blob=new Blob(['\ufeff'+exportText()],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='LoopMove-'+(document.getElementById('f-date').value||'清单')+'.txt';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
-const classifier=document.createElement('dialog');classifier.id='arrangementDialog';document.body.append(classifier);
-function chooseArrangement(){
- if(!S.items.length){go(2);return;}
- classifier.innerHTML='<h2>'+jl('怎么安排？','How would you like to plan?','怎樣安排？')+'</h2><div class="arrangement-choices"><button id="arrangeManual"><b>↔ '+jl('自己安排','Plan myself','自己安排')+'</b><span>'+jl('拖动决定日期','Drag items to dates','拖動決定日期')+'</span></button><button id="arrangeSmart"><b>✨ '+jl('智能安排','Smart start','智能安排')+'</b><span>'+jl('安排日期，也推荐哪些不带走','Schedule items and suggest what to leave','安排日期，也推薦哪些不帶走')+'</span></button></div><button id="arrangeCancel" class="ghost">'+jl('返回物品','Back to items','返回物品')+'</button>';
- showDialog(classifier);document.getElementById('arrangeCancel').onclick=()=>classifier.close();
- document.getElementById('arrangeManual').onclick=()=>{normalizeItems();S.items.filter(i=>!i.fixed&&!i.classified).forEach(i=>i.bucket='pending');journey.arrangement='manual';journey.classified=true;classifier.close();go(3);};
- document.getElementById('arrangeSmart').onclick=smartArrange;
+function renderMapModes(){
+ mapTabs.replaceChildren();
+ [['buy',mapTabTitle('buy')],['sell',mapTabTitle('sell')],['donate',mapTabTitle('donate')],['recycle',mapTabTitle('recycle')]].forEach(([key,title])=>{
+  const b=document.createElement('button');b.type='button';b.textContent=title;
+  b.className=journey.mapMode===key?'on':'';
+  b.onclick=()=>{journey.mapMode=key;journey.mapCat=null;journey.selected=null;_mv=null;_gmv=null;refreshMap();};
+  mapTabs.append(b);
+ });
+ const head=document.querySelector('#mapCard .mc-head b');
+ if(head)head.textContent=journey.mapMode==='buy'?jl('地图对比 · 带走还是当地买？','Map · Move or buy locally?','地圖對比 · 帶走還是當地買？'):jl('地图 · 附近处理地点','Map · Nearby disposal locations','地圖 · 附近處理地點');
+}
+function openServiceMap(mode){
+ journey.mapMode=mode;journey.mapCat=null;journey.selected=null;
+ document.getElementById('detailTitle').textContent=mode==='buy'?jl('附近购买','Shop nearby','附近購買'):mapTabTitle(mode);
+ document.getElementById('detailActions').replaceChildren();
+ document.getElementById('stationDetails')?.remove();
+ document.getElementById('detailBody').append(mapCard);mapCard.hidden=false;
+ if(!drawer.open)showDialog(drawer);
+ _mv=null;_gmv=null;ensureMap();refreshMap();
+}
+
+/* 仅 buy 模式显示 mock 设施；处置模式交给 Overpass 点 */
+function matchesFacility(f){return journey.mapMode==='buy'&&(!journey.mapCat||f.cat===journey.mapCat);}
+
+const disposalPoints=new Map();
+const disposalRequests=new Set();
+const OVERPASS_MIRRORS=[
+ 'https://overpass-api.de/api/interpreter',
+ 'https://overpass.kumi.systems/api/interpreter',
+ 'https://overpass.openstreetmap.fr/api/interpreter'
+];
+function dkey(handle){return (S.dest?S.dest.id:'hsk')+'|'+handle;}
+function addressOf(t){
+ if(!t)return '';
+ if(t['addr:full'])return t['addr:full'];
+ const street=t['addr:street']?((t['addr:housenumber']||'')+' '+t['addr:street']).trim():'';
+ return street||t['addr:suburb']||t['addr:district']||t['addr:city']||'';
+}
+function handleKindName(h){
+ return h==='sell'?jl('二手店','Second-hand shop','二手店')
+  :h==='donate'?jl('捐赠点','Donation point','捐贈點')
+  :h==='recycle'?jl('回收点','Recycling point','回收點'):jl('地点','Place','地點');
+}
+function pointName(p,idx){
+ const n=p.tags&&(p.tags.name||p.tags['name:en']||p.tags['name:zh']);
+ if(n)return n;
+ return handleKindName(p.handle)+(typeof idx==='number'?' #'+(idx+1):'');
+}
+function normalizeOverpassElement(el,handle){
+ const tags=el.tags||{};
+ let lat=el.lat,lon=el.lon;
+ if((lat==null||lon==null)&&el.center){lat=el.center.lat;lon=el.center.lon;}
+ if(lat==null||lon==null)return null;
+ return {lat,lon,tags,handle};
+}
+/* 前端直连 Overpass（仅作后端代理不可用时的回退），逐镜像轮询 */
+async function overpassDirect(handle,lat,lng){
+ const q=DISPOSAL_QUERIES[handle],d=0.09;
+ const bbox=(lat-d)+','+(lng-d)+','+(lat+d)+','+(lng+d);
+ let parts='';
+ q.tags.forEach(([k,v])=>{parts+='node["'+k+'"="'+v+'"]('+bbox+');way["'+k+'"="'+v+'"]('+bbox+');';});
+ const query='[out:json][timeout:15];('+parts+');out center 30;';
+ let lastErr=null;
+ for(const host of OVERPASS_MIRRORS){
+  const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),15000);
+  try{
+   const r=await fetch(host,{method:'POST',body:'data='+encodeURIComponent(query),signal:ctrl.signal});
+   if(!r.ok)throw new Error('overpass '+r.status);
+   const j=await r.json();
+   return (j.elements||[]).map(el=>normalizeOverpassElement(el,handle)).filter(Boolean);
+  }catch(e){lastErr=e;}
+  finally{clearTimeout(timer);}
+ }
+ throw lastErr||new Error('overpass unavailable');
+}
+async function loadDisposalPoints(handle){
+ const cfg=DAY_LOCS[S.dest?S.dest.id:'hsk']||DAY_LOCS.hsk;
+ const key=dkey(handle);
+ if(disposalPoints.has(key))return disposalPoints.get(key);
+ if(disposalRequests.has(key))return [];
+ disposalRequests.add(key);
+ const lat=cfg.center.lat,lng=cfg.center.lng;
+ let pts=[];
+ /* 1) 优先后端代理：服务器间无 CORS、带真实 UA、轮询镜像 */
+ if(typeof API_BASE!=='undefined'&&API_BASE){
+  const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),48000);
+  try{
+   const r=await fetch(API_BASE+'/api/nearby',{
+    method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({handle,lat,lng}),signal:ctrl.signal
+   });
+   if(r.ok){
+    const j=await r.json().catch(()=>null);
+    if(j&&Array.isArray(j.points)){
+     pts=j.points.map(p=>({lat:p.lat,lon:p.lon,
+      tags:{name:p.name||'','addr:full':p.addr||'','addr:street':p.addr||''},handle}))
+      .filter(p=>p.lat!=null&&p.lon!=null);
+    }
+   }
+  }catch(e){pts=[];}
+  finally{clearTimeout(timer);}
+ }
+ /* 2) 后端拿不到点时回退前端直连镜像 */
+ if(!pts.length){
+  try{pts=await overpassDirect(handle,lat,lng);}catch(e){pts=[];}
+ }
+ /* 3) 仍为空：存空数组，渲染层走官方链接回退（disposalFallback） */
+ disposalPoints.set(key,pts);
+ disposalRequests.delete(key);
+ return pts;
+}
+function disposalPopupHtml(p){
+ const addr=addressOf(p.tags);
+ return '<div style="font-size:13px;min-width:170px;line-height:1.5"><b>'+esc(pointName(p))+'</b><br>'
+  +(addr?'<span style="color:#555">'+esc(addr)+'</span><br>':'')
+  +'<a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+p.lat+','+p.lon+'">'+jl('路线与详情 ↗','Directions ↗','路線與詳情 ↗')+'</a></div>';
+}
+function disposalFallback(handle){
+ const wrap=document.createElement('div');wrap.className='disposal-fallback';
+ const links={
+  sell:[['Carousell','https://www.carousell.com.hk/'],['闲鱼 Goofish','https://www.goofish.com/'],[jl('地图搜二手店','Map: second-hand shops','地圖搜二手店'),'https://www.google.com/maps/search/second+hand+shop/']],
+  donate:[['Salvation Army 救世军','https://www.salvationarmy.org.hk/'],[jl('地图搜慈善捐赠','Map: charity donation','地圖搜慈善捐贈'),'https://www.google.com/maps/search/charity+donation/']],
+  recycle:[['香港官方回收地图','https://www.wastereduction.gov.hk/zh-hk/recycling-map'],['绿在区区','https://www.wastereduction.gov.hk/zh-hk/'],[jl('地图搜回收点','Map: recycling points','地圖搜回收點'),'https://www.google.com/maps/search/recycling+point/']]
+ }[handle]||[];
+ links.forEach(([label,url])=>{const a=document.createElement('a');a.className='dlink';a.target='_blank';a.rel='noopener';a.href=url;a.textContent=label+' ↗';wrap.append(a);});
+ const note=document.createElement('p');note.className='map-hint';
+ note.textContent=handle==='recycle'
+  ?jl('电子电器请使用专门电子废物回收渠道；交投前确认接收品类与开放时间。','For electronics use a dedicated e-waste channel; confirm accepted items and hours.','電子電器請使用專門電子廢物回收渠道；交投前確認接收品類與開放時間。')
+  :jl('地图暂无数据时，请通过官方入口查询；交投前确认接收品类、开放时间与条件。','If the map has no data, use the official links; confirm accepted items and hours.','地圖暫無數據時，請通過官方入口查詢；交投前確認接收品類、開放時間與條件。');
+ wrap.append(note);
+ return wrap;
+}
+
+/* 地点列表（#shopMatches）：buy 走 mock 设施；处置走 Overpass 真实地址 */
+renderShopMatches=function(){
+ renderMapModes();
+ const out=document.getElementById('shopMatches');if(!out)return;
+ out.innerHTML='';
+ const handle=journey.mapMode;
+ if(handle==='buy'){
+  const cfg=DAY_LOCS[S.dest?S.dest.id:'hsk']||DAY_LOCS.hsk;
+  const head=document.createElement('div');head.className='shop-head';
+  head.innerHTML='<b>'+jl('🛒 目的地就近购买','🛒 Buy near destination','🛒 目的地就近購買')+'</b>';
+  out.append(head);
+  let count=0;
+  cfg.facilities.filter(matchesFacility).forEach(f=>{
+   const c=MAP_CATS[f.cat]||MAP_CATS.convenience;
+   const a=document.createElement('a');a.className='shop-match';a.target='_blank';a.rel='noopener';
+   a.href='https://www.google.com/maps/search/?api=1&query='+f.lat+','+f.lng;
+   a.innerHTML=c.icon+' <b>'+esc(t3(f.name))+'</b><small>'+esc(t3(f.addr))+'</small>';
+   out.append(a);count++;
+  });
+  if(!count)out.insertAdjacentHTML('beforeend','<p class="map-hint">'+jl('正在加载购买点…','Loading shops…','正在加載購買點…')+'</p>');
+  return;
+ }
+ const head=document.createElement('div');head.className='shop-head';
+ head.innerHTML='<b>'+mapTabTitle(handle)+'</b>';
+ out.append(head);
+ const pts=disposalPoints.get(dkey(handle));
+ if(pts===undefined){
+  out.insertAdjacentHTML('beforeend','<p class="map-hint">'+jl('正在查找附近地点…','Finding nearby places…','正在查找附近地點…')+'</p>');
+ }else if(pts.length===0){
+  out.insertAdjacentHTML('beforeend','<p class="map-hint">'+jl('地图暂无该区域数据，请使用下方官方入口。','No map data for this area yet — please use the official links below.','地圖暫無該區域數據，請使用下方官方入口。')+'</p>');
+ }else{
+  pts.slice(0,10).forEach((p,idx)=>{
+   const a=document.createElement('a');a.className='shop-match';a.target='_blank';a.rel='noopener';
+   a.href='https://www.google.com/maps/search/?api=1&query='+p.lat+','+p.lon;
+   a.innerHTML='<b>'+esc(pointName(p,idx))+'</b>'+(addressOf(p.tags)?'<small>'+esc(addressOf(p.tags))+'</small>':'<small>'+jl('点此查看位置与路线','View location & directions','點此查看位置與路線')+'</small>');
+   out.append(a);
+  });
+ }
+ out.append(disposalFallback(handle));
+};
+
+/* 刷新地图（自定义：buy 走 mock；处置触发 Overpass 并叠加真实点） */
+refreshMap=function(){
+ const handle=journey.mapMode;
+ const renderNow=()=>{if(_gmap)renderGMap();else if(_map)renderMap();renderLegend();renderShopMatches();};
+ if(handle==='buy'){_mv=null;_gmv=null;renderNow();return;}
+ if(!disposalPoints.has(dkey(handle))&&!disposalRequests.has(dkey(handle))){
+  loadDisposalPoints(handle).then(()=>{_mv=null;_gmv=null;renderNow();});
+ }else{renderNow();}
+};
+
+/* 在 Leaflet 与 Google 地图上叠加处置点 */
+const baseRenderMap=renderMap;
+renderMap=function(){
+ const resetView=_mv===null;
+ baseRenderMap();
+ if(!_map||journey.mapMode==='buy')return;
+ const handle=journey.mapMode,pts=disposalPoints.get(dkey(handle))||[];
+ const q=DISPOSAL_QUERIES[handle];
+ pts.forEach(p=>{
+  const ic=L.divIcon({className:'',html:'<div class="lm-pin '+q.pin+'">'+q.icon+'</div>',iconSize:[32,32],iconAnchor:[16,16]});
+  L.marker([p.lat,p.lon],{icon:ic}).addTo(_layer).bindPopup(disposalPopupHtml(p),{maxWidth:260});
+ });
+ if(pts.length&&resetView){try{_map.fitBounds(L.latLngBounds(pts.map(p=>[p.lat,p.lon])).pad(0.15));}catch(e){}}
+};
+const baseRenderGMap=renderGMap;
+renderGMap=function(){
+ baseRenderGMap();
+ if(!_gmap||journey.mapMode==='buy')return;
+ const handle=journey.mapMode,pts=disposalPoints.get(dkey(handle))||[];
+ const q=DISPOSAL_QUERIES[handle],color={sell:'#1c5a3c',donate:'#7c3aed',recycle:'#b3261e'}[handle];
+ const bounds=new google.maps.LatLngBounds();
+ pts.forEach(p=>{
+  const m=new google.maps.Marker({position:{lat:p.lat,lng:p.lon},map:_gmap,icon:gIcon(color,q.icon),title:pointName(p)});
+  m.addListener('click',()=>{if(_ginfo)_ginfo.close();_ginfo=new google.maps.InfoWindow({content:disposalPopupHtml(p),maxWidth:260});_ginfo.open({map:_gmap,anchor:m});});
+  bounds.extend(m.getPosition());
+ });
+ if(pts.length){try{_gmap.fitBounds(bounds,{top:30,right:30,bottom:30,left:30});}catch(e){}}
+};
+
+/* ================= AI 一次性分类 + 分天 ================= */
+function ruleFallback(){
+ normalizeItems();
+ const N=S.trips;
+ const moving=S.items.filter(i=>!i.fixed&&i.bucket!=='buy'&&i.bucket!=='trash');
+ const aiSuggest=moving.filter(i=>urgency(i)===3&&i.vol<0.03);
+ const keep=moving.filter(i=>!aiSuggest.includes(i));
+ const sorted=keep.slice().sort((a,b)=>urgency(a)-urgency(b)||b.vol-a.vol);
+ distribute(sorted,N,S.purpose||'phased');
+ S.trips=N;
+ renderBoard();
 }
 async function smartArrange(){
+ if(journey.arranging)return;
  normalizeItems();
- classifier.innerHTML='<h2>'+jl('正在安排…','Planning…','正在安排…')+'</h2>';let ai=false;
- if(!IS_STATIC){try{const response=await fetch(API_BASE+'/api/arrange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dates:journey.dates,items:S.items.filter(i=>!i.fixed).map(i=>({id:i.id,name:i.name,kind:i.kind}))}),signal:AbortSignal.timeout(90000)});if(response.ok){const data=await response.json();const valid=new Map((data.items||[]).filter(i=>Number.isInteger(i.day)&&i.day>=1&&i.day<=journey.dates.length).map(i=>[i.id,i.day]));ai=S.items.filter(i=>!i.fixed).every(i=>valid.has(i.id));if(ai)S.items.filter(i=>!i.fixed).forEach(i=>i.bucket='day'+valid.get(i.id));}}catch(e){}}
- if(!ai)S.items.filter(i=>!i.fixed&&!i.classified).forEach(it=>{
-  const group=itemGroup(it);
-  const shops=(DAY_LOCS[S.dest?.id]||DAY_LOCS.hsk).facilities.some(f=>f.cat===category(it));
-  it.bucket=group==='furniture'&&shops?'buy':group==='decor'?'trash':['bedding','electronics','daily'].includes(group)?'day1':'day'+journey.dates.length;
-  it.plan=it.bucket==='buy'?'rebuy':'';
- });
- S.items.forEach(i=>i.classified=true);journey.arrangement=ai?'ai':'demo';journey.classified=true;journey.edited=false;classifier.close();go(3);
+ const moving=S.items.filter(i=>!i.fixed);
+ if(!moving.length){bAlert(jl('还没有可安排的物品，请先识别或添加。','No items to plan yet — add or scan some first.','還沒有可安排的物品，請先識別或添加。'));return;}
+ const why=document.getElementById('aiWhy');why.style.display='block';
+ const tEl=document.getElementById('aiWhyText');
+ const sEl=document.getElementById('aiSuggestBox');if(sEl)sEl.innerHTML='';
+ const btn=document.getElementById('autoSplit');btn.disabled=true;
+ journey.arranging=true;
+ const done=()=>{journey.arranging=false;btn.disabled=false;};
+ try{
+  if(IS_STATIC){
+   tEl.textContent=jl('正在用本地规则分天…','Planning with local rules…','正在用本地規則分天…');
+   ruleFallback();
+   tEl.textContent=jl('网页版使用本地规则分天（AI 分类与日期安排需联网后端）。','Web demo uses local rules (AI classification needs the online service).','網頁版使用本地規則分天（AI 分類與日期安排需聯網後端）。');
+   done();return;
+  }
+  tEl.textContent=jl('正在唤醒 AI 服务…','Waking up the AI service…','正在喚醒 AI 服務…');
+  const ready=await waitForApiReady(()=>{});
+  if(!ready){tEl.textContent=jl('AI 服务启动超时。当前安排已保留，可稍后重试或手动拖拽。','AI service startup timed out. Your plan is kept — retry later or drag manually.','AI 服務啟動逾時。當前安排已保留，可稍後重試或手動拖拽。');done();return;}
+  const N=S.trips;
+  const cfg=DAY_LOCS[S.dest?S.dest.id:'hsk']||DAY_LOCS.hsk;
+  const payload={
+   classify:true,
+   dates:[...Array(N)].map((_,i)=>'Day '+(i+1)),
+   context:{dest:t3(cfg.destinationName),goal:S.purpose||'phased'},
+   items:S.items.map(it=>({id:it.id,name:nm(it),kind:it.kind,size:it.size,vol:it.vol,fixed:!!it.fixed}))
+  };
+  tEl.textContent=jl('AI 正在分类（带走/当地购买/转卖/捐赠/回收）并安排日期…','AI is classifying (move/buy/resell/donate/recycle) and scheduling…','AI 正在分類（帶走/當地購買/轉賣/捐贈/回收）並安排日期…');
+  const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),90000);
+  let res;
+  try{
+   res=await fetch(API_BASE+'/api/arrange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:ctrl.signal});
+  }finally{clearTimeout(to);}
+  const j=await res.json().catch(()=>null);
+  if(!res.ok)throw new Error((j&&(j.message||j.error))||'arrange failed');
+  if(!j||!Array.isArray(j.items))throw new Error('bad payload');
+  /* 前端防御校验：不通过则整体拒绝应用，保留当前选择 */
+  const byId={};
+  for(const r of j.items){if(byId[r.id])throw new Error('dup');byId[r.id]=r;}
+  for(const it of S.items){
+   const r=byId[it.id];
+   if(!r)throw new Error('missing');
+   if(it.fixed)continue;
+   if(r.decision==='move'&&(!Number.isInteger(r.day)||r.day<1||r.day>N))throw new Error('bad day');
+   if(r.decision==='trash'&&!DISPOSAL_HANDLES.includes(r.handle))throw new Error('bad handle');
+   if(!['move','buy','trash','fixed'].includes(r.decision))throw new Error('bad decision');
+  }
+  /* 应用 */
+  S.items.forEach(it=>{
+   if(it.fixed){it.bucket='fixed';it.plan='';it.handle='';return;}
+   const r=byId[it.id];
+   if(r.decision==='move'){it.bucket='day'+r.day;it.plan='';it.handle='';}
+   else if(r.decision==='buy'){it.bucket='buy';it.plan='rebuy';it.handle='';}
+   else if(r.decision==='trash'){it.bucket='trash';it.plan='';it.handle=r.handle;}
+   else if(r.decision==='fixed'){it.fixed=true;it.bucket='fixed';it.plan='';it.handle='';}
+  });
+  S.trips=N;
+  journey.arrangement='ai';journey.edited=false;
+  renderBoard();
+  const reasons=j.items.filter(r=>r.reason).slice(0,14)
+   .map(r=>{const it=S.items.find(x=>x.id===r.id);return '· '+(it?nm(it):r.id)+'：'+r.reason;}).join('\n');
+  const head=jl('AI 已完成分类与分天（可手动调整）：','AI finished classifying & scheduling (adjustable):','AI 已完成分類與分天（可手動調整）：');
+  tEl.textContent=head+'\n'+reasons;
+  if(document.body.classList.contains('lowvision'))speak(head.replace(/\n/g,' '));
+  refreshMap();
+ }catch(err){
+  tEl.textContent=jl('AI 安排失败，当前选择已保留。可重试，或直接拖拽手动分类。','AI planning failed. Your current choices are kept — retry or drag manually.','AI 安排失敗，當前選擇已保留。可重試，或直接拖拽手動分類。');
+ }finally{done();}
 }
-function renderArrangement(){
- let note=document.getElementById('arrangementNote');if(!note){note=document.createElement('p');note.id='arrangementNote';document.getElementById('timelineTools').before(note);}
- note.textContent=journey.arrangement==='ai'?jl('✨ AI 已安排 · 拖动可调整','✨ Arranged by AI · Drag to adjust','✨ AI 已安排 · 拖動可調整'):journey.arrangement==='demo'?jl('✨ 智能安排（演示）· 大件就近买、装饰可转赠；拖动即可调整','✨ Smart draft (demo) · Buy bulky items nearby; pass decor on. Drag to adjust.','✨ 智能安排（示範）· 大件就近買、裝飾可轉贈；拖動即可調整'):jl('↔ 自己安排 · 拖到日期框','↔ Your plan · Drag items to dates','↔ 自己安排 · 拖到日期框');
- if(journey.edited)note.textContent+=' · '+jl('已调整','Edited','已調整');
-}
-// A shared map stays next to the leave-behind lane, and can expand into item details.
-const timelineLeft=document.createElement('div');timelineLeft.id='timelineLeft';document.getElementById('board').before(timelineLeft);timelineLeft.append(document.getElementById('board'));
-const mapDock=document.createElement('aside');mapDock.id='mapDock';document.querySelector('#s3 .days-wrap').append(mapDock);mapDock.append(mapCard);
-const mapTabs=document.createElement('div');mapTabs.id='mapModes';mapCard.prepend(mapTabs);
-const disposalPoints=new Map();const disposalRequests=new Set();let disposalStatus='';
-function selectMapFor(it){journey.selected=it.id;journey.mapMode=it.bucket==='trash'?'dispose':'buy';journey.mapCat=it.bucket==='trash'?null:category(it);_mv=null;_gmv=null;}
-function restoreMap(){if(drawer.open)return;mapDock.append(mapCard);mapCard.hidden=false;if(document.getElementById('s3').classList.contains('on')){ensureMap();refreshMap();}}
-function openServiceMap(mode){journey.mapMode=mode;journey.mapCat=null;journey.selected=null;document.getElementById('detailTitle').textContent=jl('附近地点','Nearby places','附近地點');document.getElementById('detailActions').replaceChildren();document.getElementById('stationDetails')?.remove();document.getElementById('detailBody').append(mapCard);mapCard.hidden=false;if(!drawer.open)showDialog(drawer);_mv=null;ensureMap();refreshMap();}
-const processMapButton=document.createElement('button');processMapButton.id='processMap';processMapButton.className='map-shortcut';processMapButton.textContent='🗺️';processMapButton.setAttribute('aria-label','处理地图 / Disposal map');processMapButton.onclick=()=>openServiceMap('dispose');document.querySelector('#s4 h1').after(processMapButton);
-function renderMapModes(){mapTabs.replaceChildren();[['all',jl('全部','All')],['buy',jl('🛍️ 购买','🛍️ Buy','🛍️ 購買')],['dispose',jl('♻️ 处理','♻️ Recycle','♻️ 處理')]].forEach(([key,title])=>{const b=document.createElement('button');b.textContent=title;b.className=journey.mapMode===key?'on':'';b.onclick=()=>{journey.mapMode=key;journey.mapCat=null;journey.selected=null;_mv=null;refreshMap();};mapTabs.append(b);});document.querySelector('#mapCard .mc-head b').textContent=jl('地图对比 · 带走还是当地买？','Map comparison · Move or buy locally?','地圖對比 · 帶走還是當地買？');}
-const shopMatchesBase=renderShopMatches;
-renderShopMatches=function(){renderMapModes();shopMatchesBase();const out=document.getElementById('shopMatches');if(journey.mapMode==='dispose')out.innerHTML='';if(journey.mapMode!=='buy'){
- const points=disposalPoints.get(S.dest?.id||'hsk')||[];
- points.slice(0,5).forEach(p=>{const a=document.createElement('a');a.className='shop-result';a.target='_blank';a.rel='noopener';a.href='https://www.google.com/maps/search/?api=1&query='+p.lat+','+p.lon;a.textContent='♻️ '+(p.tags?.name||jl('回收点','Recycling point','回收點'))+' ↗';out.append(a);});
- const official=document.createElement('a');official.className='shop-result';official.href='https://www.wastereduction.gov.hk/zh-hk/recycling-map';official.target='_blank';official.rel='noopener';official.textContent=jl('♻️ 官方回收地图 ↗','♻️ Official recycling map ↗','♻️ 官方回收地圖 ↗');out.append(official);
- const note=document.createElement('small');note.className='map-note';note.textContent=points.length?jl('OpenStreetMap 点位 · 接收品类请先确认','OpenStreetMap locations · Check accepted materials','OpenStreetMap 點位 · 請先確認接收品類'):disposalStatus||jl('正在查找回收点…','Finding recycling points…','正在尋找回收點…');out.append(note);
- }};
-async function loadDisposalPoints(){
- const key=S.dest?.id||'hsk';if(disposalRequests.has(key))return;disposalRequests.add(key);const c=(DAY_LOCS[key]||DAY_LOCS.hsk).center;
- try{const query='[out:json][timeout:12];nwr[amenity=recycling]('+[c.lat-.09,c.lng-.09,c.lat+.09,c.lng+.09].join(',')+');out center tags;';const res=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(query),{signal:AbortSignal.timeout(18000)});if(!res.ok)throw new Error('map');const data=await res.json();const points=(data.elements||[]).map(p=>({...p,lat:p.lat??p.center?.lat,lon:p.lon??p.center?.lon})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon));disposalPoints.set(key,points);disposalStatus=points.length?'':jl('附近暂无点位，请查看官方地图','No nearby points; use the official map','附近暫無點位，請查看官方地圖');}
- catch(e){disposalStatus=jl('点位暂不可用，可打开官方地图','Locations unavailable; open the official map','點位暫不可用，可開啟官方地圖');}
- if((S.dest?.id||'hsk')===key){if(journey.mapMode==='dispose')_mv=null;if(_map)renderMap();renderShopMatches();}
-}
-const baseRenderMap=renderMap;
-renderMap=function(){const resetView=_mv===null;baseRenderMap();if(!_map||journey.mapMode==='buy')return;const points=disposalPoints.get(S.dest?.id||'hsk')||[];points.forEach(p=>{const icon=L.divIcon({className:'',html:'<div class="lm-pin recycle-pin">♻️</div>',iconSize:[32,32],iconAnchor:[16,16]});L.marker([p.lat,p.lon],{icon}).addTo(_layer).bindPopup('<b>♻️ '+esc(p.tags?.name||jl('回收点','Recycling point','回收點'))+'</b><p>'+jl('接收品类请先确认','Check accepted materials','請先確認接收品類')+'</p><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+p.lat+','+p.lon+'">'+jl('路线与详情 ↗','Directions & details ↗','路線與詳情 ↗')+'</a>');});if(journey.mapMode==='dispose'&&points.length&&resetView)_map.fitBounds(points.map(p=>[p.lat,p.lon]));};
-const baseRefreshMap=refreshMap;refreshMap=function(){baseRefreshMap();if(journey.mapMode!=='buy'&&!disposalRequests.has(S.dest?.id||'hsk')&&!disposalPoints.has(S.dest?.id||'hsk'))loadDisposalPoints();};
+const autoSplitBtn=document.getElementById('autoSplit');
+if(autoSplitBtn)autoSplitBtn.onclick=()=>{smartArrange();};
 
-// One-click suggestions only fill undecided items, preserving manual choices.
-document.getElementById('aiFill2').onclick=()=>{
- normalizeItems();S.items.filter(i=>['buy','trash'].includes(i.bucket)&&!i.handle).forEach(it=>{
-  it.handle=/破损|破損|损坏|損壞|broken/i.test(it.name)?'recycle':['furniture','electronics'].includes(itemGroup(it))?'sell':'donate';
- });journey.edited=true;renderModal();
+/* ================= 导航：4 步（1/2/3/5），s4 已删除 ================= */
+renderModal=function(){/* 独立 Decide Item Destination 页已删除，去向操作合并进 Compare More Options */};
+go=function(n){
+ document.querySelectorAll('.screen').forEach(s=>s.classList.remove('on'));
+ const el=document.getElementById('s'+n);if(el)el.classList.add('on');
+ document.querySelectorAll('.steps [data-step]').forEach(b=>b.classList.toggle('on',+b.dataset.step===n));
+ window.scrollTo(0,0);
+ if(document.body.classList.contains('lowvision'))speak(T('nav'+n));
+ if(n===3){renderBoard();ensureMap();}
+ if(n===5){renderPlan();}
+ const tz=document.getElementById('trashZone');if(tz)tz.classList.remove('show');
 };
-const summaryExport=document.createElement('button');summaryExport.className='primary';summaryExport.onclick=downloadList;
-document.querySelector('#s5 .row').append(summaryExport);
-document.getElementById('aiPlan').closest('.plan-day').remove();
-document.getElementById('planTrash').closest('.plan-day').remove();
-const journeyLabels=compactLabels;
-compactLabels=function(){journeyLabels();Object.assign(I18N[LANG],{s4ai:jl('✨ 一键 AI 选择（演示）','✨ AI picks (demo)','✨ 一鍵 AI 選擇（示範）')});summaryExport.textContent=jl('↓ 导出清单 TXT','↓ Export checklist TXT','↓ 匯出清單 TXT');};
-const decisionIntro=document.createElement('p');decisionIntro.className='lead';document.querySelector('#s3 h1').after(decisionIntro);
-const disposalIntro=document.createElement('p');disposalIntro.className='lead';document.querySelector('#s4 h1').after(disposalIntro);
-const comparison=document.createElement('div');comparison.id='mapComparison';mapTabs.after(comparison);
-const comparisonBase=renderShopMatches;
-renderShopMatches=function(){
- comparisonBase();const it=S.items.find(i=>i.id===journey.selected);
- comparison.replaceChildren();const hint=document.createElement('p');hint.className='map-note';hint.textContent=it?nm(it)+' · '+jl('对比带走和当地购买，点击地图地点核对。','Compare moving with buying locally; check places on the map.','對比帶走和當地購買，點擊地圖地點核對。'):jl('点选物品，对比搬运体积与重购参考价，再查看附近购买或回收地点。','Select an item to compare moving volume and replacement price, with nearby shops and recycling.','點選物品，對比搬運體積與重購參考價，再查看附近購買或回收地點。');comparison.append(hint);
- if(it&&!it.fixed){const row=document.createElement('div');row.className='comparison-options';
- [[/^day/.test(it.bucket)?it.bucket:'day1',jl('带走','Move','帶走')+' · '+(Number(it.vol)||0).toFixed(2)+' m³'],['buy',jl('当地买','Buy locally','當地買')+' · '+(Number.isFinite(it.rebuy)?'~HK$'+it.rebuy:jl('价格待确认','Price unknown','價格待確認'))]].forEach(([slot,label])=>{const b=document.createElement('button');b.textContent=label;b.className=it.bucket===slot?'primary':'';b.onclick=()=>{moveItem(it,slot);refreshMap();};row.append(b);});comparison.append(row);
- const note=document.createElement('small');note.className='map-note';note.textContent=jl('演示估价，非商家报价；地图展示目的地周边地点。','Demo estimates, not store quotes. Locations are near your destination.','示範估價，非商家報價；地圖展示目的地周邊地點。');comparison.append(note);}
+
+/* s5 导出 TXT 按钮 */
+(function(){
+ const row=document.querySelector('#s5 .row');
+ if(row&&!document.getElementById('exportTxt')){
+  const btn=document.createElement('button');btn.className='primary';btn.id='exportTxt';
+  btn.textContent=jl('⬇ 导出 TXT 清单','⬇ Export TXT plan','⬇ 導出 TXT 清單');
+  btn.onclick=()=>{
+   const blob=new Blob([exportText()],{type:'text/plain;charset=utf-8'});
+   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='LoopMove-moving-plan.txt';a.click();
+  };
+  row.append(btn);
+ }
+})();
+/* 右下角旧垃圾桶浮层已被页面内五区取代：隐藏并修正其跳转 */
+(function(){
+ const tz=document.getElementById('trashZone');
+ if(tz)tz.style.display='none';
+ const t4=document.getElementById('trashToStep4');
+ if(t4)t4.onclick=()=>{document.getElementById('trashMask').classList.remove('show');go(5);};
+})();
+
+/* ================= 三语 ================= */
+const journeyLabels=()=>{
+ const names=[
+  jl('1 行程详情','1 Move details','1 行程詳情'),
+  jl('2 房间物品','2 Room inventory','2 房間物品'),
+  jl('3 对比更多选择','3 Compare more options','3 對比更多選擇'),
+  jl('4 搬家清单','4 Moving checklist','4 搬家清單')
+ ];
+ Object.assign(I18N[LANG],{
+  nav1:names[0],nav2:names[1],nav3:names[2],nav5:names[3],
+  s3to4:names[3]+' →',
+  s5back:'← '+names[2]
+ });
 };
-const finalLabels=applyLang;
-applyLang=function(){finalLabels();decisionIntro.textContent=jl('先看地图，再决定：带走、当地买，或留给下一个人。','Use the map to decide: move it, buy locally, or pass it on.','先看地圖，再決定：帶走、當地買，或留給下一個人。');disposalIntro.textContent=jl('为不带走的旧物选择去向。AI 演示只补充未选择项，可随时修改；实际成色与接收条件请自行确认。','Choose where old items go. Demo AI fills undecided items; adjust for condition and service requirements.','為不帶走的舊物選擇去向。AI 示範只補充未選擇項，可隨時修改；實際成色與接收條件請自行確認。');};
+function compactLabels(){journeyLabels();}
+applyLang=function(){
+ journeyLabels();
+ document.documentElement.lang={en:'en',zhHant:'zh-Hant',zhHans:'zh-Hans'}[LANG];
+ document.body.classList.toggle('hant',LANG==='zhHant');
+ document.querySelectorAll('[data-i18n]').forEach(el=>{const k=el.dataset.i18n;if(k in(I18N[LANG])||k in I18N.en)el.textContent=T(k);});
+ const current=document.querySelector('.screen.on');
+ if(current){const n=current.id;if(n==='s3')renderBoard();if(n==='s5')renderPlan();}
+ renderItems();
+};
+/* 初始化：重新应用语言（注入五区/导航文案），再渲染看板 */
 applyLang();
+renderBoard();

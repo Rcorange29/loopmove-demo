@@ -213,19 +213,20 @@ body.eld .disposal-actions button { flex-basis:90px; }
 .anno-wrap.is-drawing .anno { pointer-events:none; }
 .box-preview { position:absolute; border:2px dashed #d25b13; background:rgba(210,91,19,.12); pointer-events:none; }
 
-/* Plan draft fills the left column below Leave behind, using the existing card style. */
-#aiJourneyPlan { margin-top:20px; padding:20px; border:3px solid var(--line); background:#edf2e8; box-shadow:var(--shadow); min-width:0; }
-#aiJourneyPlan[hidden],#packingGuide[hidden],#aiFill2[hidden] { display:none!important; }
-.ai-plan-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; }
-.ai-plan-heading h2 { margin:0; font-size:21px; font-weight:900; letter-spacing:-.03em; }
-.ai-plan-heading button,.ai-disposal-tools button { padding:8px 12px; font-size:13px; }
-#aiPlanEditor { display:block; width:100%; box-sizing:border-box; padding:12px; margin-top:12px; resize:vertical; min-height:180px; font:inherit; font-size:14px; line-height:1.65; background:#fff; }
-.ai-disposal-tools { display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:16px; padding-top:16px; border-top:2px dashed #b8c9ac; }
-.ai-disposal-tools p { flex:1 1 220px; margin:0; }
-.ai-disposal-tools p[role=status] { flex-basis:100%; }
-.ai-disposal-list { display:grid; gap:10px; margin-top:14px; }
-.ai-disposal-row { border:2px solid #b8c9ac; padding:10px; background:#f8faf4; }
-.ai-disposal-row label { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:10px; font-size:14px; font-weight:800; }
-.ai-disposal-row select { flex:0 1 150px; max-width:100%; padding:6px; font-size:13px; }
-.plan-draft-text { white-space:pre-wrap; overflow-wrap:anywhere; }
-body.lowvision #aiJourneyPlan,body.lowvision .ai-disposal-row { background:#141414; color:#ff0; border-color:#ff0; }
+/* Disposal stays inside Leave behind, with three parallel destination bins. */
+.disposal-bins { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin-top:14px; }
+#board .disposal-bin { min-width:0; min-height:170px; padding:8px; border:2px solid #8a9986; background:#edf2e8; }
+.disposal-bin h5 { margin:0 0 10px; font-size:13px; font-weight:900; overflow-wrap:anywhere; }
+#board .disposal-bin .slots { grid-template-columns:1fr; max-height:360px; min-height:112px; overflow:auto; }
+#board .disposal-bin .item { padding:7px 6px; font-size:11px; overflow-wrap:anywhere; }
+#board .disposal-bin .empty-slot { padding:10px 2px; border-width:2px; font-size:11px; }
+#board .disposal-bin[data-disposal=sell] { border-color:#2963a5; background:#e1ecfa; }
+#board .disposal-bin[data-disposal=donate] { border-color:#8056aa; background:#eee4f7; }
+#board .disposal-bin[data-disposal=recycle] { border-color:#1c5a3c; background:#e1eee5; }
+.checklist-item { display:flex; align-items:center; gap:12px; min-height:44px; padding:10px 0; border-bottom:1px dashed #bdcbb4; font-size:14px; line-height:1.5; cursor:pointer; }
+.checklist-item input { flex:none; width:22px; height:22px; margin:0; padding:0; accent-color:var(--brand); cursor:pointer; }
+.checklist-item span { min-width:0; overflow-wrap:anywhere; }
+.checklist-item.is-complete span { text-decoration:line-through; color:var(--muted); }
+.checklist-progress { margin:6px 0 10px; color:var(--brand); font-size:12px; font-weight:800; }
+body.lowvision #board .disposal-bin { background:#141414; color:#ff0; border-color:#ff0; }
+#aiFill2[hidden] { display:none!important; }

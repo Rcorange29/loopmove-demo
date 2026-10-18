@@ -59,3 +59,15 @@ PR：https://github.com/Rcorange29/loopmove-demo/pull/2
 The legacy live API still returns Chinese-only names. Passing the UI language did not localize those names, so English UI leaked Chinese results. Added household-name localization as a compatibility layer, while preferring correctly localized model output. Source names remain in data for fixture checks. Unknown translations show an English name-review label instead of raw Chinese or invented specific identities. User-edited names are preserved.
 
 The six reported items now render as Built-in bedside cabinet, Black-framed wall art, Upholstered double bed, Ceiling fan light, Double-layer floor-length curtains, and Small decorative potted plant. 27 logic tests pass; DOM integration checks inventory/photo labels and switching back and forth between English and Simplified Chinese. This does not deploy the pending richer model/bbox backend.
+
+## Revised workflow: disposal bins and interactive checklist
+
+Removed the standalone AI-plan UI and its automatic /api/plan request, editor and exported draft notes. Existing AI date arrangement and separate disposal page remain. Leave behind now contains a staging area and three parallel, multi-item bins: Resell / Donate / Recycle. Drag/drop supports stage → bin, bin → bin, bin → stage and back to moving dates. Fixed fixtures are excluded.
+
+Map requests now use action-specific OSM tags: shop=second_hand, shop=charity or amenity=recycling, cached separately per destination/action; service links and truthful no-location messages remain. No invented provider coordinates.
+
+The final checklist has real checkboxes and per-group progress; completion survives page navigation and is included in TXT. Moving or changing the disposal action resets completion. Refresh still resets page-memory state.
+
+Restored all five original packing photo cards, including unused references, after comparing HEAD~2. Reference cards do not imply a required quantity. Added asset version query parameters to prevent new code using stale CSS.
+
+Validation: 27 logic tests plus revised DOM workflow test passed. Chrome native UI confirmed the new manual flow, three bins in the accessibility tree, no AI-plan panel and all five packing references. A first screenshot exposed stale cached CSS; versioned asset references were then added. Native drag/drop and final new-CSS screenshot are not yet fully verified because the shared browser was being operated concurrently and a forced-refresh tool timed out.

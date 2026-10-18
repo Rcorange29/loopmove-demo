@@ -1,7 +1,7 @@
 (function(root){
  'use strict';
  function resetItems(items){
-  for(const it of items){it.bucket=it.fixed?'fixed':'pending';it.plan='';it.handle='';it.day=null;it.ch=null;it.classified=false;delete it.aiDisposal;}
+  for(const it of items){it.bucket=it.fixed?'fixed':'pending';it.plan='';it.handle='';it.day=null;it.ch=null;it.classified=false;it.completed=false;delete it.aiDisposal;}
  }
  function disposalItems(items){return items.filter(i=>!i.fixed&&['buy','trash'].includes(i.bucket)&&!i.handle);}
  function validateDisposal(data,items){

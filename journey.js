@@ -48,7 +48,7 @@ function renderShopMatches(){
 function dateAt(offset){const d=new Date(document.getElementById('f-date').value+'T12:00:00');if(Number.isNaN(d.getTime()))return '';d.setDate(d.getDate()+offset);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function timelineSlots(){return journey.dates.map((_,i)=>'day'+(i+1)).sort((a,b)=>slotName(a).localeCompare(slotName(b)));}
 function slotName(slot){if(slot==='pending')return jl('待安排','To schedule','待安排');if(slot==='fixed')return jl('⚠️ 固定设施 · 留在原处','⚠️ Fixed · stays here','⚠️ 固定設施 · 留在原處');if(slot==='buy')return jl('当地购买','Buy locally','當地購買');if(slot==='trash')return jl('不带走','Leave behind','不帶走');return journey.dates[+slot.slice(3)-1]||jl('待安排','Unscheduled','待安排');}
-function moveItem(it,slot){if(it.fixed)return;it.bucket=slot;it.plan=slot==='buy'?'rebuy':'';if(!['buy','trash'].includes(slot))it.handle='';journey.edited=true;renderBoard();if(['buy','trash'].includes(slot)){selectMapFor(it);refreshMap();}}
+function moveItem(it,slot){if(it.fixed)return;if(it.bucket!==slot)it.completed=false;it.bucket=slot;it.plan=slot==='buy'?'rebuy':'';it.handle='';delete it.aiDisposal;journey.edited=true;renderBoard();if(['buy','trash'].includes(slot)){selectMapFor(it);refreshMap();}}
 const ITEM_COLORS={furniture:['#1c5a3c','#e1eee5'],bedding:['#8056aa','#eee4f7'],electronics:['#2963a5','#e1ecfa'],daily:['#a76e12','#fff0ce'],decor:['#aa5369','#fae4eb']};
 function itemGroup(it){
  if(it.group&&ITEM_COLORS[it.group])return it.group;
@@ -78,7 +78,7 @@ function renderTools(){
 }
 function itemSlot(slot){
  const body=document.createElement('div');body.className='slots';body.dataset.col=slot;
- const items=S.items.filter(i=>i.bucket===slot);items.forEach(it=>body.append(card(it)));
+ const items=S.items.filter(i=>i.bucket===slot&&(!['buy','trash'].includes(slot)||!i.handle));items.forEach(it=>body.append(card(it)));
  if(!items.length){const e=document.createElement('span');e.className='empty-slot';e.textContent=jl('拖到这里','Drop here','拖到這裡');body.append(e);}return body;
 }
 renderBoard=function(){
@@ -90,12 +90,31 @@ renderBoard=function(){
   col.append(h,itemSlot(slot));board.append(col);
  });
  const leave=document.createElement('section');leave.className='col leave-column';leave.dataset.col='trash';leave.innerHTML='<h3>♻️ '+slotName('trash')+'</h3>';const mapButton=document.createElement('button');mapButton.className='map-shortcut';mapButton.textContent='🗺️';mapButton.setAttribute('aria-label',jl('查看处理地图','Disposal map','查看處理地圖'));mapButton.onclick=()=>openServiceMap('dispose');leave.querySelector('h3').append(mapButton);
- ['buy','trash'].forEach(slot=>{const group=document.createElement('section');group.className='leave-group';group.dataset.col=slot;const h=document.createElement('h4');h.textContent=slot==='buy'?slotName('buy'):jl('处理','Disposal','處理');group.append(h,itemSlot(slot));leave.append(group);});
+ ['buy','trash'].forEach(slot=>{const group=document.createElement('section');group.className='leave-group';group.dataset.col=slot;const h=document.createElement('h4');h.textContent=slot==='buy'?slotName('buy'):jl('处理','Disposal','處理');group.append(h,itemSlot(slot));if(slot==='trash')group.append(disposalBins());leave.append(group);});
  const fixed=S.items.filter(i=>i.fixed);if(fixed.length){const row=document.createElement('div');row.className='fixed-strip';fixed.forEach(it=>row.append(card(it)));leave.append(row);}
  board.append(leave);renderPacking();if(typeof mapDock!=='undefined')restoreMap();
 };
-// Capture the drop before the legacy board handler; fixed fixtures cannot enter moving slots.
-document.getElementById('board').addEventListener('drop',e=>{e.preventDefault();e.stopImmediatePropagation();const col=e.target.closest('[data-col]');if(!col)return;col.classList.remove('drop');const it=S.items.find(i=>i.id===e.dataTransfer.getData('text'));if(it&&col.dataset.col!=='fixed')moveItem(it,col.dataset.col);},true);
+function assignDisposal(it,handle){
+ if(!it||it.fixed||!['buy','trash'].includes(it.bucket)||!['sell','donate','recycle'].includes(handle))return false;
+ if(it.handle!==handle)it.completed=false;
+ it.handle=handle;delete it.aiDisposal;journey.edited=true;selectMapFor(it);renderBoard();refreshMap();return true;
+}
+function disposalBins(){
+ const grid=document.createElement('div');grid.className='disposal-bins';
+ [['sell',jl('转卖','Resell','轉賣')],['donate',jl('捐赠','Donate','捐贈')],['recycle',jl('回收','Recycle','回收')]].forEach(([handle,title])=>{
+  const bin=document.createElement('section');bin.className='disposal-bin';bin.dataset.disposal=handle;bin.setAttribute('aria-label',title);
+  const items=S.items.filter(i=>!i.fixed&&['buy','trash'].includes(i.bucket)&&i.handle===handle);
+  const heading=document.createElement('h5');heading.textContent=title+' · '+items.length;bin.append(heading);
+  const body=document.createElement('div');body.className='slots';items.forEach(it=>body.append(card(it)));if(!items.length){const hint=document.createElement('span');hint.className='empty-slot';hint.textContent=jl('拖到这里','Drop here','拖到這裡');body.append(hint);}bin.append(body);
+  bin.addEventListener('dragover',e=>{e.preventDefault();bin.classList.add('drop');});bin.addEventListener('dragleave',e=>{if(!bin.contains(e.relatedTarget))bin.classList.remove('drop');});grid.append(bin);
+ });return grid;
+}
+// Route nested disposal drops before the legacy board handler.
+document.getElementById('board').addEventListener('drop',e=>{
+ e.preventDefault();e.stopImmediatePropagation();const it=S.items.find(i=>i.id===e.dataTransfer.getData('text'));if(!it||it.fixed)return;
+ const bin=e.target.closest('[data-disposal]');if(bin){bin.classList.remove('drop');if(!assignDisposal(it,bin.dataset.disposal))bAlert(jl('先把物品拖到不带走区域，再选择处理方式。','Move the item to Leave behind first, then choose a disposal option.','先把物品拖到不帶走區域，再選擇處理方式。'));return;}
+ const col=e.target.closest('[data-col]');if(col&&col.dataset.col!=='fixed'){col.classList.remove('drop');moveItem(it,col.dataset.col);}
+},true);
 renderModal=function(){
  normalizeItems();const list=document.getElementById('dispList');list.replaceChildren();const items=S.items.filter(i=>['trash','buy'].includes(i.bucket));
  if(!items.length){list.textContent=jl('没有需要处理的物品','Nothing to handle','沒有需要處理的物品');return;}
@@ -105,7 +124,7 @@ renderModal=function(){
   const group=document.createElement('section');group.className='disposal-group';group.dataset.handle=key;const h=document.createElement('h3');h.textContent=title+' · '+groupItems.length;group.append(h);
   const cards=document.createElement('div');cards.className='disposal-cards';
   groupItems.forEach(it=>{const c=document.createElement('article');c.className='disposal-card';const colors=ITEM_COLORS[itemGroup(it)];c.style.setProperty('--tint',colors[1]);c.style.setProperty('--category',colors[0]);const name=document.createElement('b');name.textContent=nm(it);c.append(name);const buttons=document.createElement('div');buttons.className='disposal-actions';
-   actions.forEach(([value,label])=>{const button=document.createElement('button');button.textContent=label;button.setAttribute('aria-label',nm(it)+' · '+label);button.setAttribute('aria-pressed',String(it.handle===value));button.onclick=()=>{it.handle=value;journey.edited=true;renderModal();};buttons.append(button);});c.append(buttons);cards.append(c);});group.append(cards);
+   actions.forEach(([value,label])=>{const button=document.createElement('button');button.textContent=label;button.setAttribute('aria-label',nm(it)+' · '+label);button.setAttribute('aria-pressed',String(it.handle===value));button.onclick=()=>{assignDisposal(it,value);renderModal();};buttons.append(button);});c.append(buttons);cards.append(c);});group.append(cards);
   if(key&&groupItems.length){group.append(disposalLinks({...groupItems[0],handle:key}));const map=document.createElement('button');map.className='group-map';map.textContent='🗺️ '+jl('查看地点','View locations','查看地點');map.onclick=()=>openServiceMap('dispose');group.append(map);}
   list.append(group);
  });
@@ -121,7 +140,13 @@ renderPlan=function(){
  [...timelineSlots(),'pending','buy','trash','fixed'].forEach(slot=>{
   const items=S.items.filter(i=>i.bucket===slot);if(!items.length)return;
   const section=document.createElement('section');section.className='plan-day';const h=document.createElement('h3');h.textContent=slotName(slot)+' · '+items.length;section.append(h);
-  items.forEach(it=>{const row=document.createElement('p');row.textContent='□ '+nm(it)+(['buy','trash'].includes(slot)?' → '+handleLabel(it.handle):'');section.append(row);});
+  items.forEach(it=>{
+   const row=document.createElement('label');row.className='checklist-item'+(it.completed?' is-complete':'');
+   const check=document.createElement('input');check.type='checkbox';check.checked=!!it.completed;check.dataset.itemId=it.id;check.disabled=it.fixed||slot==='pending'||(['buy','trash'].includes(slot)&&!it.handle);check.setAttribute('aria-label',jl('标记已完成：','Mark complete: ','標記已完成：')+nm(it));
+   const text=document.createElement('span');text.textContent=nm(it)+(['buy','trash'].includes(slot)?' → '+handleLabel(it.handle):'');
+   check.onchange=()=>{it.completed=check.checked;renderPlan();};row.append(check,text);section.append(row);
+  });
+  const actionable=items.filter(i=>!i.fixed);if(actionable.length){const progress=document.createElement('p');progress.className='checklist-progress';progress.textContent=actionable.filter(i=>i.completed).length+' / '+actionable.length+' '+jl('已完成','completed','已完成');h.after(progress);}
   if(journey.arrangement!=='manual'&&/^day/.test(slot))packingFor(items).forEach(line=>{const p=document.createElement('p');p.className='map-note';p.textContent=line;section.append(p);});
   days.append(section);
  });
@@ -163,7 +188,7 @@ function showDialog(el){if(el.showModal)el.showModal();else el.setAttribute('ope
 function disposalLinks(it){
  const box=document.createElement('div');box.className='station-links';
  const types=it.handle==='sell'?['Carousell','闲鱼']:it.handle==='donate'?['救世军物资捐赠']:it.handle==='stay'?[]:[/电|電|冰箱|洗衣/.test(it.kind+' '+it.name)?'欧绿保 WEEE':'绿在区区'];
- CHANNELS.filter(c=>types.includes(c.name)).forEach(c=>{const a=document.createElement('a');a.href=c.url;a.target='_blank';a.rel='noopener';a.textContent=c.name+' ↗';box.append(a);});
+ CHANNELS.filter(c=>types.includes(c.name)).forEach(c=>{const a=document.createElement('a');a.href=c.url;a.target='_blank';a.rel='noopener';a.textContent=(LANG==='en'?({'救世军物资捐赠':'Salvation Army donations','绿在区区':'GREEN@COMMUNITY','闲鱼':'Xianyu','欧绿保 WEEE':'ALBA WEEE'}[c.name]||c.name):c.name)+' ↗';box.append(a);});
  if(types.length){const note=document.createElement('small');note.textContent=jl('服务入口 · 站点与收件条件请确认','Service directory · Confirm location and accepted items','服務入口 · 請確認站點及收件條件');box.append(note);}return box;
 }
 function openItemDetails(it){
@@ -171,7 +196,7 @@ function openItemDetails(it){
  const old=document.getElementById('stationDetails');if(old)old.remove();document.getElementById('detailBody').append(mapCard);mapCard.hidden=false;selectMapFor(it);
  if(it.bucket==='trash'){
   const section=document.createElement('div');section.id='stationDetails';
-  [['recycle',jl('回收','Recycle')],['donate',jl('捐赠','Donate','捐贈')],['sell',jl('转卖','Sell','轉賣')]].forEach(([v,label])=>{const b=document.createElement('button');b.textContent=label;b.className=it.handle===v?'primary':'';b.onclick=()=>{it.handle=v;openItemDetails(it);};actions.append(b);});section.append(disposalLinks(it));document.getElementById('detailBody').append(section);
+  [['recycle',jl('回收','Recycle')],['donate',jl('捐赠','Donate','捐贈')],['sell',jl('转卖','Sell','轉賣')]].forEach(([v,label])=>{const b=document.createElement('button');b.textContent=label;b.className=it.handle===v?'primary':'';b.onclick=()=>{assignDisposal(it,v);openItemDetails(it);};actions.append(b);});section.append(disposalLinks(it));document.getElementById('detailBody').append(section);
  }else{renderShopMatches();}
  // A compact alternative to drag for touch/keyboard users lives in details, not every card.
  const move=document.createElement('select');move.setAttribute('aria-label',jl('移动物品','Move item','移動物品'));
@@ -192,19 +217,20 @@ function packingFor(items){
 }
 const packing=document.createElement('section');packing.id='packingGuide';document.querySelector('#s3 .days-wrap').after(packing);
 function renderPacking(){
- packing.hidden=journey.arrangement==='manual';if(packing.hidden)return;
+ packing.hidden=false;
  packing.innerHTML='<h2>✨ '+jl('打包参考（规则估算）','Packing guide (rule-based estimates)','打包參考（規則估算）')+'</h2><p class="packing-intro">'+jl('怎么装，更好搬','Pack for an easier move','怎樣裝，更好搬')+'</p>';
  const grid=document.createElement('div');grid.className='packing-cards';
  const lines=packingFor(S.items.filter(i=>/^day/.test(i.bucket)));
- lines.forEach(line=>{const type=line.includes('26–28')?'suitcase':/60×45/.test(line)?'bag':/40×30/.test(line)?'small':/50×40/.test(line)?'box':'large';
+ const typeFor=line=>line.includes('26–28')?'suitcase':/60×45/.test(line)?'bag':/40×30/.test(line)?'small':/50×40/.test(line)?'box':'large';
+ ['suitcase','bag','small','box','large'].forEach(type=>{const line=lines.find(line=>typeFor(line)===type)||'';
  const labels={suitcase:jl('大号行李箱','Large suitcase','大號行李箱'),bag:jl('床品收纳袋','Bedding bag','寢具收納袋'),small:jl('加厚小箱','Small sturdy box','加厚小箱'),box:jl('中号纸箱','Medium carton','中號紙箱'),large:jl('大件单独保护','Protect bulky items','大件獨立保護')};
  const tips={suitcase:jl('衣物随身，常用物品放上层','Keep everyday clothing on top','衣物隨身，常用物品放上層'),bag:jl('枕被集中装，柔软不挤坏','Keep pillows and bedding together','枕被集中裝，柔軟不擠壞'),small:jl('书本少量分装，电子产品加缓冲','Split heavy books; cushion electronics','書本少量分裝，電子產品加緩衝'),box:jl('日用品分组，箱外写好名称','Group daily items and label the box','日用品分組，箱外寫好名稱'),large:jl('桌椅加护角，家具包搬家毯','Use corner guards and moving blankets','桌椅加護角，家具包搬家毯')};
  const c=document.createElement('article');c.className='packing-card';c.innerHTML='<div class="packing-photo '+type+'" role="img" aria-label="'+labels[type]+' · '+jl('写实参考图','Photorealistic reference','寫實參考圖')+'"></div><h3>'+labels[type]+(line.match(/× (\d+)/)?' × '+line.match(/× (\d+)/)[1]:'')+'</h3><p>'+tips[type]+'</p>';
- const size=document.createElement('p');size.className='packing-size';const sizes={suitcase:jl('28 英寸 · 约 75×50×30 cm','28 inch · about 75×50×30 cm','28 吋 · 約 75×50×30 cm'),bag:jl('大号 · 约 60×45×35 cm','Large · about 60×45×35 cm','大號 · 約 60×45×35 cm'),small:jl('小号 · 约 40×30×30 cm','Small · about 40×30×30 cm','小號 · 約 40×30×30 cm'),box:jl('中号 · 约 50×40×40 cm','Medium · about 50×40×40 cm','中號 · 約 50×40×40 cm'),large:jl('按家具大小选搬家毯与护角','Choose blankets and guards to fit','按家具大小選搬家毯與護角')};size.textContent=sizes[type];c.append(size);const names=document.createElement('small');names.textContent=line.split(' → ')[1]||'';c.append(names);grid.append(c);});packing.append(grid);
+ const size=document.createElement('p');size.className='packing-size';const sizes={suitcase:jl('28 英寸 · 约 75×50×30 cm','28 inch · about 75×50×30 cm','28 吋 · 約 75×50×30 cm'),bag:jl('大号 · 约 60×45×35 cm','Large · about 60×45×35 cm','大號 · 約 60×45×35 cm'),small:jl('小号 · 约 40×30×30 cm','Small · about 40×30×30 cm','小號 · 約 40×30×30 cm'),box:jl('中号 · 约 50×40×40 cm','Medium · about 50×40×40 cm','中號 · 約 50×40×40 cm'),large:jl('按家具大小选搬家毯与护角','Choose blankets and guards to fit','按家具大小選搬家毯與護角')};size.textContent=sizes[type];c.append(size);const names=document.createElement('small');names.textContent=line.split(' → ')[1]||jl('备用包装参考 · 暂无分配物品','Packing reference · No items assigned yet','備用包裝參考 · 暫無分配物品');c.append(names);grid.append(c);});packing.append(grid);
  const note=document.createElement('small');note.className='packing-note';note.textContent=jl('AI 生成参考图 · 尺寸为选购参考，装箱前核对实际内尺寸与承重','AI-generated reference photos · Check actual interior dimensions and weight limits','AI 生成參考圖 · 尺寸為選購參考，裝箱前核對實際內尺寸與承重');packing.append(note);
 }
 function packingDrawing(type){const inside=type==='suitcase'?'<rect x="43" y="13" width="34" height="13" rx="5"/><rect x="28" y="27" width="64" height="62" rx="10"/><path d="M45 40v35m30-35v35"/><circle cx="40" cy="94" r="4"/><circle cx="80" cy="94" r="4"/>':type==='bag'?'<path d="M25 40Q60 27 95 40L101 83Q60 98 19 83Z"/><path d="M42 36V24h36v12M23 55h74"/>':type==='large'?'<path d="M22 35h76v12H22zM30 47v44m60-44v44M42 35V18h36v17"/><path d="M20 57l24-8 10 37-25 7z"/>':'<path d="M20 34l40-17 40 17v49L60 101 20 83zM20 34l40 18 40-18M60 52v49M40 25l40 18v18"/>';return '<svg class="packing-art '+type+'" viewBox="0 0 120 110" role="img" aria-label="'+type+'" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round">'+inside+'</svg>';}
-function exportText(){normalizeItems();const lines=['LoopMove · '+jl('搬家行动清单','Moving checklist','搬家行動清單'),S.dest?T('d_'+S.dest.id):'',jl('待完善事项','Decisions remaining','待完善事項')+': '+S.items.filter(i=>i.bucket==='pending'||(['buy','trash'].includes(i.bucket)&&!i.handle)).length, ''];[...timelineSlots(),'pending','buy','trash','fixed'].forEach(slot=>{const items=S.items.filter(i=>i.bucket===slot);lines.push(slotName(slot),...items.map(i=>'• '+nm(i)+(i.handle?' → '+({recycle:jl('回收','Recycle'),donate:jl('捐赠','Donate','捐贈'),sell:jl('转卖','Sell','轉賣'),stay:jl('留下','Leave')}[i.handle]):['trash','buy'].includes(slot)?' → '+jl('待处理','Pending','待處理'):'')));if(journey.arrangement!=='manual'&&slot.startsWith('day'))lines.push(...packingFor(items));if(slot==='buy'&&items.length){const cats=new Set(items.map(category));(DAY_LOCS[S.dest?.id]||DAY_LOCS.hsk).facilities.filter(f=>cats.has(f.cat)).forEach(f=>lines.push(t3(f.name)+' — https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(t3(f.name)+' '+t3(f.addr))));}lines.push('');});lines.push('https://www.wastereduction.gov.hk/zh-hk/recycling-map');lines.push(jl('装箱数量为粗估，请核对箱子内尺寸及承重。','Packing counts are estimates. Check internal dimensions and weight limits.','裝箱數量為粗估，請核對箱子內尺寸及承重。'));return lines.join('\n');}
+function exportText(){normalizeItems();const lines=['LoopMove · '+jl('搬家行动清单','Moving checklist','搬家行動清單'),S.dest?T('d_'+S.dest.id):'',jl('待完善事项','Decisions remaining','待完善事項')+': '+S.items.filter(i=>i.bucket==='pending'||(['buy','trash'].includes(i.bucket)&&!i.handle)).length, ''];[...timelineSlots(),'pending','buy','trash','fixed'].forEach(slot=>{const items=S.items.filter(i=>i.bucket===slot);lines.push(slotName(slot),...items.map(i=>'• '+nm(i)+(i.completed?' [✓]':' [ ]')+(i.handle?' → '+({recycle:jl('回收','Recycle'),donate:jl('捐赠','Donate','捐贈'),sell:jl('转卖','Sell','轉賣'),stay:jl('留下','Leave')}[i.handle]):['trash','buy'].includes(slot)?' → '+jl('待处理','Pending','待處理'):'')));if(journey.arrangement!=='manual'&&slot.startsWith('day'))lines.push(...packingFor(items));if(slot==='buy'&&items.length){const cats=new Set(items.map(category));(DAY_LOCS[S.dest?.id]||DAY_LOCS.hsk).facilities.filter(f=>cats.has(f.cat)).forEach(f=>lines.push(t3(f.name)+' — https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(t3(f.name)+' '+t3(f.addr))));}lines.push('');});lines.push('https://www.wastereduction.gov.hk/zh-hk/recycling-map');lines.push(jl('装箱数量为粗估，请核对箱子内尺寸及承重。','Packing counts are estimates. Check internal dimensions and weight limits.','裝箱數量為粗估，請核對箱子內尺寸及承重。'));return lines.join('\n');}
 function downloadList(){const blob=new Blob(['\ufeff'+exportText()],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='LoopMove-'+(document.getElementById('f-date').value||'清单')+'.txt';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
 const classifier=document.createElement('dialog');classifier.id='arrangementDialog';document.body.append(classifier);
 function chooseArrangement(){
@@ -228,7 +254,7 @@ function validatedArrangement(data,items,dayCount){
  return result;
 }
 function finishArrangement(mode){
- S.items.forEach(i=>i.classified=true);journey.arrangement=mode;journey.classified=true;classifier.close();go(3);if(mode==='ai'&&typeof generateJourneyPlan==='function')generateJourneyPlan();
+ S.items.forEach(i=>i.classified=true);journey.arrangement=mode;journey.classified=true;classifier.close();go(3);
 }
 function useRuleArrangement(){
  const items=arrangementItems(),loads=journey.dates.map(()=>0);
@@ -277,27 +303,38 @@ const timelineLeft=document.createElement('div');timelineLeft.id='timelineLeft';
 const mapDock=document.createElement('aside');mapDock.id='mapDock';document.querySelector('#s3 .days-wrap').append(mapDock);mapDock.append(mapCard);
 const mapTabs=document.createElement('div');mapTabs.id='mapModes';mapCard.prepend(mapTabs);
 const disposalPoints=new Map();const disposalRequests=new Set();let disposalStatus='';
-function selectMapFor(it){journey.selected=it.id;journey.mapMode=it.bucket==='trash'?'dispose':'buy';journey.mapCat=it.bucket==='trash'?null:category(it);_mv=null;_gmv=null;}
+function selectMapFor(it){journey.selected=it.id;journey.mapMode=it.bucket==='trash'||it.handle?'dispose':'buy';journey.mapCat=journey.mapMode==='dispose'?null:category(it);_mv=null;_gmv=null;}
 function restoreMap(){if(drawer.open)return;mapDock.append(mapCard);mapCard.hidden=false;if(document.getElementById('s3').classList.contains('on')){ensureMap();refreshMap();}}
 function openServiceMap(mode){journey.mapMode=mode;journey.mapCat=null;journey.selected=null;document.getElementById('detailTitle').textContent=jl('附近地点','Nearby places','附近地點');document.getElementById('detailActions').replaceChildren();document.getElementById('stationDetails')?.remove();document.getElementById('detailBody').append(mapCard);mapCard.hidden=false;if(!drawer.open)showDialog(drawer);_mv=null;ensureMap();refreshMap();}
 const processMapButton=document.createElement('button');processMapButton.id='processMap';processMapButton.className='map-shortcut';processMapButton.textContent='🗺️';processMapButton.setAttribute('aria-label','处理地图 / Disposal map');processMapButton.onclick=()=>openServiceMap('dispose');document.querySelector('#s4 h1').after(processMapButton);
 function renderMapModes(){mapTabs.replaceChildren();[['all',jl('全部','All')],['buy',jl('🛍️ 购买','🛍️ Buy','🛍️ 購買')],['dispose',jl('♻️ 处理','♻️ Recycle','♻️ 處理')]].forEach(([key,title])=>{const b=document.createElement('button');b.textContent=title;b.className=journey.mapMode===key?'on':'';b.onclick=()=>{journey.mapMode=key;journey.mapCat=null;journey.selected=null;_mv=null;refreshMap();};mapTabs.append(b);});document.querySelector('#mapCard .mc-head b').textContent=jl('地图对比 · 带走还是当地买？','Map comparison · Move or buy locally?','地圖對比 · 帶走還是當地買？');}
+function disposalAction(){return S.items.find(i=>i.id===journey.selected)?.handle||'all';}
+function disposalKey(){return (S.dest?.id||'hsk')+':'+disposalAction();}
+function disposalPlaceName(p){return p.tags?.name||(p.tags?.shop==='charity'?jl('慈善商店','Charity shop','慈善商店'):p.tags?.shop==='second_hand'?jl('二手商店','Second-hand shop','二手商店'):jl('回收点','Recycling point','回收點'));}
 const shopMatchesBase=renderShopMatches;
-renderShopMatches=function(){renderMapModes();shopMatchesBase();const out=document.getElementById('shopMatches');if(journey.mapMode==='dispose')out.innerHTML='';if(journey.mapMode!=='buy'){
- const points=disposalPoints.get(S.dest?.id||'hsk')||[];
- points.slice(0,5).forEach(p=>{const a=document.createElement('a');a.className='shop-result';a.target='_blank';a.rel='noopener';a.href='https://www.google.com/maps/search/?api=1&query='+p.lat+','+p.lon;a.textContent='♻️ '+(p.tags?.name||jl('回收点','Recycling point','回收點'))+' ↗';out.append(a);});
- const official=document.createElement('a');official.className='shop-result';official.href='https://www.wastereduction.gov.hk/zh-hk/recycling-map';official.target='_blank';official.rel='noopener';official.textContent=jl('♻️ 官方回收地图 ↗','♻️ Official recycling map ↗','♻️ 官方回收地圖 ↗');out.append(official);
- const note=document.createElement('small');note.className='map-note';note.textContent=points.length?jl('OpenStreetMap 点位 · 接收品类请先确认','OpenStreetMap locations · Check accepted materials','OpenStreetMap 點位 · 請先確認接收品類'):disposalStatus||jl('正在查找回收点…','Finding recycling points…','正在尋找回收點…');out.append(note);
- }};
+renderShopMatches=function(){
+ renderMapModes();shopMatchesBase();const out=document.getElementById('shopMatches');if(journey.mapMode==='dispose')out.replaceChildren();if(journey.mapMode==='buy')return;
+ const action=disposalAction(),points=disposalPoints.get(disposalKey())||[];
+ if(journey.mapMode==='dispose'){const title=document.createElement('b');title.textContent=action==='all'?jl('附近处理地点','Nearby disposal locations','附近處理地點'):handleLabel(action)+' · '+jl('附近地点','Nearby locations','附近地點');out.append(title);}
+ points.slice(0,5).forEach(p=>{const a=document.createElement('a');a.className='shop-result';a.target='_blank';a.rel='noopener';a.href='https://www.google.com/maps/search/?api=1&query='+p.lat+','+p.lon;a.textContent=disposalPlaceName(p)+' ↗';out.append(a);});
+ const selected=S.items.find(i=>i.id===journey.selected);if(selected?.handle){out.append(disposalLinks(selected));}
+ if(action==='recycle'||action==='all'){const official=document.createElement('a');official.className='shop-result';official.href='https://www.wastereduction.gov.hk/zh-hk/recycling-map';official.target='_blank';official.rel='noopener';official.textContent=jl('♻️ 官方回收地图 ↗','♻️ Official recycling map ↗','♻️ 官方回收地圖 ↗');out.append(official);}
+ const note=document.createElement('small');note.className='map-note';note.textContent=points.length?jl('OpenStreetMap 点位 · 请确认库存、接收品类与营业时间','OpenStreetMap locations · Confirm accepted items and opening hours','OpenStreetMap 點位 · 請確認庫存、接收品類與營業時間'):disposalPoints.has(disposalKey())?jl('附近暂无此类点位，可使用服务入口查询；不代表平台有线下门店。','No nearby locations of this type. Use the service links; online platforms may have no physical store.','附近暫無此類點位，可使用服務入口查詢；不代表平台有線下門店。'):disposalStatus||jl('正在查找地点…','Finding locations…','正在尋找地點…');out.append(note);
+};
 async function loadDisposalPoints(){
- const key=S.dest?.id||'hsk';if(disposalRequests.has(key))return;disposalRequests.add(key);const c=(DAY_LOCS[key]||DAY_LOCS.hsk).center;
- try{const query='[out:json][timeout:12];nwr[amenity=recycling]('+[c.lat-.09,c.lng-.09,c.lat+.09,c.lng+.09].join(',')+');out center tags;';const res=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(query),{signal:AbortSignal.timeout(18000)});if(!res.ok)throw new Error('map');const data=await res.json();const points=(data.elements||[]).map(p=>({...p,lat:p.lat??p.center?.lat,lon:p.lon??p.center?.lon})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon));disposalPoints.set(key,points);disposalStatus=points.length?'':jl('附近暂无点位，请查看官方地图','No nearby points; use the official map','附近暫無點位，請查看官方地圖');}
- catch(e){disposalStatus=jl('点位暂不可用，可打开官方地图','Locations unavailable; open the official map','點位暫不可用，可開啟官方地圖');}
- if((S.dest?.id||'hsk')===key){if(journey.mapMode==='dispose')_mv=null;if(_map)renderMap();renderShopMatches();}
+ const key=disposalKey(),action=disposalAction();if(disposalRequests.has(key))return;disposalRequests.add(key);disposalStatus='';const c=(DAY_LOCS[S.dest?.id]||DAY_LOCS.hsk).center;
+ try{
+  const bounds=[c.lat-.09,c.lng-.09,c.lat+.09,c.lng+.09].join(',');
+  const tags=action==='sell'?['shop=second_hand']:action==='donate'?['shop=charity']:action==='recycle'?['amenity=recycling']:['shop=second_hand','shop=charity','amenity=recycling'];
+  const query='[out:json][timeout:12];('+tags.map(tag=>'nwr['+tag+']('+bounds+');').join('')+');out center tags;';
+  const res=await fetch('https://overpass-api.de/api/interpreter?data='+encodeURIComponent(query),{signal:AbortSignal.timeout(18000)});if(!res.ok)throw new Error('map');const data=await res.json();
+  disposalPoints.set(key,(data.elements||[]).map(p=>({...p,lat:p.lat??p.center?.lat,lon:p.lon??p.center?.lon})).filter(p=>Number.isFinite(p.lat)&&Number.isFinite(p.lon)));
+ }catch(e){disposalStatus=jl('点位暂不可用，可使用服务入口','Locations unavailable; use the service links','點位暫不可用，可使用服務入口');disposalRequests.delete(key);}
+ if(disposalKey()===key){if(journey.mapMode==='dispose')_mv=null;if(_map)renderMap();renderShopMatches();}
 }
 const baseRenderMap=renderMap;
-renderMap=function(){const resetView=_mv===null;baseRenderMap();if(!_map||journey.mapMode==='buy')return;const points=disposalPoints.get(S.dest?.id||'hsk')||[];points.forEach(p=>{const icon=L.divIcon({className:'',html:'<div class="lm-pin recycle-pin">♻️</div>',iconSize:[32,32],iconAnchor:[16,16]});L.marker([p.lat,p.lon],{icon}).addTo(_layer).bindPopup('<b>♻️ '+esc(p.tags?.name||jl('回收点','Recycling point','回收點'))+'</b><p>'+jl('接收品类请先确认','Check accepted materials','請先確認接收品類')+'</p><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+p.lat+','+p.lon+'">'+jl('路线与详情 ↗','Directions & details ↗','路線與詳情 ↗')+'</a>');});if(journey.mapMode==='dispose'&&points.length&&resetView)_map.fitBounds(points.map(p=>[p.lat,p.lon]));};
-const baseRefreshMap=refreshMap;refreshMap=function(){baseRefreshMap();if(journey.mapMode!=='buy'&&!disposalRequests.has(S.dest?.id||'hsk')&&!disposalPoints.has(S.dest?.id||'hsk'))loadDisposalPoints();};
+renderMap=function(){const resetView=_mv===null;baseRenderMap();if(!_map||journey.mapMode==='buy')return;const points=disposalPoints.get(disposalKey())||[];points.forEach(p=>{const icon=L.divIcon({className:'',html:'<div class="lm-pin recycle-pin">♻️</div>',iconSize:[32,32],iconAnchor:[16,16]});L.marker([p.lat,p.lon],{icon}).addTo(_layer).bindPopup('<b>'+esc(disposalPlaceName(p))+'</b><p>'+jl('接收品类请先确认','Check accepted materials','接收品類請先確認')+'</p><a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+p.lat+','+p.lon+'">'+jl('路线与详情 ↗','Directions & details ↗','路線與詳情 ↗')+'</a>');});if(journey.mapMode==='dispose'&&points.length&&resetView)_map.fitBounds(points.map(p=>[p.lat,p.lon]));};
+const baseRefreshMap=refreshMap;refreshMap=function(){baseRefreshMap();if(journey.mapMode!=='buy'&&!disposalRequests.has(disposalKey())&&!disposalPoints.has(disposalKey()))loadDisposalPoints();};
 
 // AI suggestions fill undecided items only; manual mode never invokes them.
 document.getElementById('aiFill2').onclick=generateDisposalPlan;
@@ -322,67 +359,21 @@ const finalLabels=applyLang;
 applyLang=function(){finalLabels();decisionIntro.textContent=jl('先看地图，再决定：带走、当地买，或留给下一个人。','Use the map to decide: move it, buy locally, or pass it on.','先看地圖，再決定：帶走、當地買，或留給下一個人。');disposalIntro.textContent=jl('为不带走的旧物选择去向。AI 建议只补充未选择项，可随时修改；实际成色与接收条件请自行确认。','Choose where old items go. AI suggestions fill undecided items; adjust for condition and service requirements.','為不帶走的舊物選擇去向。AI 建議只補充未選擇項，可隨時修改；實際成色與接收條件請自行確認。');};
 applyLang();
 
-// Editable AI plan sits below the board, alongside the map.
-const aiDraft={text:'',edited:false,snapshot:null,status:'',busy:false};
-let planningSession=0,planController=null,disposalController=null;
-const aiJourneyPlan=document.createElement('section');aiJourneyPlan.id='aiJourneyPlan';
-timelineLeft.append(aiJourneyPlan);
+// Manual mode and the existing AI disposal action; no separate AI-plan block.
+let planningSession=0,disposalController=null;
 const disposalMessage=document.createElement('p');disposalMessage.id='disposalMessage';disposalMessage.className='map-note';disposalMessage.setAttribute('role','status');document.getElementById('aiFill2').after(disposalMessage);
 function planningSnapshot(){return LoopMovePlanning.snapshot(S.items,journey.dates,LANG);}
 function startManualArrangement(){
- arrangementRequest++;planningSession++;planController?.abort();disposalController?.abort();
- normalizeItems();LoopMovePlanning.resetItems(S.items);
- Object.assign(aiDraft,{text:'',edited:false,snapshot:null,status:'',busy:false});
- journey.arrangement='manual';journey.classified=true;journey.edited=false;journey.selected=null;
- disposalMessage.textContent='';classifier.close();
- const why=document.getElementById('aiWhy');if(why)why.textContent='';
- go(3);renderPlanningPanel();
+ arrangementRequest++;planningSession++;disposalController?.abort();normalizeItems();LoopMovePlanning.resetItems(S.items);
+ journey.arrangement='manual';journey.classified=true;journey.edited=false;journey.selected=null;disposalMessage.textContent='';classifier.close();go(3);renderPlanningPanel();
 }
 function renderPlanningPanel(){
- const manual=journey.arrangement==='manual';
- aiJourneyPlan.hidden=manual;
- document.getElementById('aiFill2').hidden=manual;
- disposalMessage.hidden=manual;
- disposalIntro.textContent=manual?jl('为不带走的物品自行选择转卖、捐赠或回收。','Choose resale, donation or recycling for your leave-behind items.','為不帶走的物品自行選擇轉賣、捐贈或回收。'):jl('为不带走的物品选择去向，也可让 AI 补充未选择项；所有建议均可修改。','Choose destinations for leave-behind items, or ask AI to fill undecided choices. Every suggestion can be changed.','為不帶走的物品選擇去向，也可讓 AI 補充未選擇項；所有建議均可修改。');
- if(manual){aiJourneyPlan.replaceChildren();return;}
- aiJourneyPlan.replaceChildren();
- const heading=document.createElement('div');heading.className='ai-plan-heading';
- const title=document.createElement('h2');title.textContent=jl('你的 AI 搬家计划','Your AI moving plan','你的 AI 搬家計劃');heading.append(title);
- const generate=document.createElement('button');generate.className='ghost';generate.textContent=aiDraft.busy?jl('正在生成…','Generating…','正在生成…'):aiDraft.text?jl('重新生成','Regenerate','重新生成'):jl('生成计划','Generate plan','生成計劃');generate.disabled=aiDraft.busy||journey.arrangement!=='ai';generate.onclick=()=>generateJourneyPlan(true);heading.append(generate);aiJourneyPlan.append(heading);
- const status=document.createElement('p');status.className='map-note';status.setAttribute('role','status');status.textContent=aiDraft.status||(journey.arrangement==='ai'?jl('根据当前日期与去向生成，可直接修改下方内容。','Based on your current dates and item choices. Edit the draft below.','根據目前日期與去向生成，可直接修改下方內容。'):jl('使用智能安排后可生成 AI 计划。','Use Smart start to generate an AI plan.','使用智能安排後可生成 AI 計劃。'));aiJourneyPlan.append(status);
- const editor=document.createElement('textarea');editor.id='aiPlanEditor';editor.rows=7;editor.value=aiDraft.text;editor.setAttribute('aria-label',jl('编辑搬家计划','Edit moving plan','編輯搬家計劃'));editor.placeholder=jl('AI 计划会显示在这里，也可以补充自己的安排。','Your AI plan will appear here. You can add your own notes.','AI 計劃會顯示在這裡，也可以補充自己的安排。');editor.oninput=()=>{aiDraft.text=editor.value;aiDraft.edited=true;};aiJourneyPlan.append(editor);
- if(aiDraft.text&&aiDraft.snapshot!==planningSnapshot()){const note=document.createElement('p');note.className='map-note';note.textContent=jl('物品或日期已修改，旧草稿已保留；可重新生成。','Items or dates changed. Your draft is preserved; regenerate to update it.','物品或日期已修改，舊草稿已保留；可重新生成。');aiJourneyPlan.append(note);}
- const disposal=document.createElement('div');disposal.className='ai-disposal-tools';
- const hint=document.createElement('p');hint.className='map-note';hint.textContent=jl('不带走的物品：让 AI 建议转卖、捐赠或回收；可逐件修改。','Leave-behind items: let AI suggest resale, donation or recycling, then adjust each choice.','不帶走的物品：讓 AI 建議轉賣、捐贈或回收；可逐件修改。');disposal.append(hint);
- const button=document.createElement('button');button.textContent=jl('AI 选择物品去向','AI disposal suggestions','AI 選擇物品去向');button.disabled=!!disposalController;button.onclick=generateDisposalPlan;disposal.append(button);
- const message=document.createElement('p');message.className='map-note';message.setAttribute('role','status');message.textContent=disposalMessage.textContent;disposal.append(message);aiJourneyPlan.append(disposal);
- const left=S.items.filter(i=>!i.fixed&&['buy','trash'].includes(i.bucket));
- if(left.length){const list=document.createElement('div');list.className='ai-disposal-list';left.forEach(it=>{
-  const row=document.createElement('div');row.className='ai-disposal-row';const label=document.createElement('label');label.textContent=nm(it);const choice=document.createElement('select');choice.setAttribute('aria-label',nm(it)+' · '+jl('物品去向','Item destination','物品去向'));
-  [['',jl('待选择','Choose an action','待選擇')],['sell',jl('转卖','Resell','轉賣')],['donate',jl('捐赠','Donate','捐贈')],['recycle',jl('回收','Recycle','回收')]].forEach(([value,text])=>{const option=document.createElement('option');option.value=value;option.textContent=text;choice.append(option);});choice.value=it.handle||'';choice.onchange=()=>{it.handle=choice.value;delete it.aiDisposal;journey.edited=true;renderPlanningPanel();};label.append(choice);row.append(label);if(it.aiDisposal){const reason=document.createElement('p');reason.className='map-note';reason.textContent=it.aiDisposal;row.append(reason);}list.append(row);
- });aiJourneyPlan.append(list);}
+ const manual=journey.arrangement==='manual';document.getElementById('aiFill2').hidden=manual;disposalMessage.hidden=manual;
 }
 async function requestPlanning(path,payload,controller){
  if(IS_STATIC)throw new Error('NO_SERVICE');
- const response=await fetch(API_BASE+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal});
- const data=await response.json();
- if(!response.ok||data.error||data.mode==='demo')throw new Error(data.error||'REQUEST_FAILED');
- return data;
-}
-async function generateJourneyPlan(force=false){
- if(journey.arrangement!=='ai'||(aiDraft.edited&&!force))return;
- planController?.abort();const controller=new AbortController();planController=controller;
- const session=planningSession,snapshot=planningSnapshot(),draftBefore=aiDraft.text,language=LoopMoveRecognition.language(LANG);
- aiDraft.busy=true;aiDraft.status=jl('正在生成与你的清单一致的计划…','Generating a plan from your current checklist…','正在生成與你的清單一致的計劃…');renderPlanningPanel();
- const timer=setTimeout(()=>controller.abort(),90000);
- try{
-  const data=await requestPlanning('/api/plan',{language,dates:journey.dates,dest:S.dest?T('d_'+S.dest.id):'',items:S.items.map(i=>({id:i.id,name:nm(i),vol:i.vol,kind:i.kind,bucket:i.bucket,handle:i.handle,fixed:!!i.fixed}))},controller);
-  if(controller!==planController||session!==planningSession||journey.arrangement!=='ai')return;
-  if(snapshot!==planningSnapshot()||draftBefore!==aiDraft.text){aiDraft.status=jl('清单或草稿已修改，保留你的内容，请重新生成。','The checklist or draft changed. Your edits are preserved; regenerate when ready.','清單或草稿已修改，保留你的內容，請重新生成。');return;}
-  if(data.language!==language||typeof data.text!=='string'||!data.text.trim())throw new Error('BACKEND_UPDATE_REQUIRED');
-  aiDraft.text=data.text;aiDraft.edited=false;aiDraft.snapshot=snapshot;aiDraft.status=jl('AI 草稿 · 可直接编辑；清单的日期与去向以物品卡片为准。','AI draft · Edit freely. Item cards remain the source of truth for dates and destinations.','AI 草稿 · 可直接編輯；清單的日期與去向以物品卡片為準。');
- }catch(e){if(controller===planController&&session===planningSession)aiDraft.status=jl('AI 计划暂不可用。当前服务需支持新版计划接口；你的草稿与清单已保留。','AI plan unavailable. The service needs the updated planning API. Your draft and checklist are preserved.','AI 計劃暫不可用。目前服務需支援新版計劃介面；你的草稿與清單已保留。');}
- finally{clearTimeout(timer);if(controller===planController){planController=null;aiDraft.busy=false;renderPlanningPanel();}}
+ const response=await fetch(API_BASE+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:controller.signal});const data=await response.json();
+ if(!response.ok||data.error||data.mode==='demo')throw new Error(data.error||'REQUEST_FAILED');return data;
 }
 async function generateDisposalPlan(){
  if(journey.arrangement==='manual'||disposalController)return;
@@ -400,11 +391,7 @@ async function generateDisposalPlan(){
   rows.forEach(row=>{const it=S.items.find(i=>i.id===row.id);if(it&&!it.fixed&&!it.handle&&['buy','trash'].includes(it.bucket)){it.handle=row.handle;it.aiDisposal=row.reason;}});
   journey.edited=true;disposalMessage.textContent=jl('AI 建议已应用，可在下方或物品去向页面逐件修改。','AI suggestions applied. Adjust each choice below or on the item destinations page.','AI 建議已套用，可在下方或物品去向頁面逐件修改。');if(document.getElementById('s4').classList.contains('on'))renderModal();
  }catch(e){if(session===planningSession)disposalMessage.textContent=jl('AI 去向建议暂不可用，请手动选择；已有决定保持不变。','AI disposal suggestions unavailable. Choose manually; existing decisions are preserved.','AI 去向建議暫不可用，請手動選擇；已有決定保持不變。');}
- finally{clearTimeout(timer);if(controller===disposalController){disposalController=null;document.getElementById('aiFill2').disabled=false;renderPlanningPanel();}}
+ finally{clearTimeout(timer);if(controller===disposalController){disposalController=null;document.getElementById('aiFill2').disabled=false;renderPlanningPanel();if(document.getElementById('s3').classList.contains('on'))renderBoard();}}
 }
-const planningBoard=renderBoard;renderBoard=function(){planningBoard();renderPlanningPanel();};
-const planningModal=renderModal;renderModal=function(){planningModal();document.getElementById('aiFill2').hidden=journey.arrangement==='manual';disposalMessage.hidden=journey.arrangement==='manual';};
-const planningLabels=applyLang;applyLang=function(){planningLabels();renderPlanningPanel();};
-const planningExport=exportText;exportText=function(){const text=planningExport();return aiDraft.text&&journey.arrangement!=='manual'?text+'\n\n'+jl('搬家计划备注（可编辑草稿）','Moving plan notes (editable draft)','搬家計劃備註（可編輯草稿）')+'\n'+aiDraft.text:text;};
-const planningChecklist=renderPlan;renderPlan=function(){planningChecklist();if(aiDraft.text&&journey.arrangement!=='manual'){const section=document.createElement('section');section.className='plan-day';const title=document.createElement('h3');title.textContent=jl('搬家计划备注','Moving plan notes','搬家計劃備註');const text=document.createElement('p');text.className='plan-draft-text';text.textContent=aiDraft.text;section.append(title,text);document.getElementById('planDays').append(section);}};
+const planningModal=renderModal;renderModal=function(){planningModal();renderPlanningPanel();};
 renderPlanningPanel();

@@ -119,12 +119,16 @@ loopmove-demo/
 
 运行 `node --test tests/arrangement.cjs`。覆盖正常返回、重复／遗漏／未知 ID、非法日期、规则模式、失败、取消、请求期间清单变化和单日安排。这些是逻辑测试，不能代替公开浏览器端到端验收。
 
-## Planning modes
+## Planning modes and checklist
 
-`Plan myself` clears all date assignments, item destinations and AI draft notes, retaining the inventory, photos, fixture classification and selected dates. No AI planning requests run in this mode. Packing guidance is hidden.
+`Plan myself` clears date assignments, disposal decisions and completion marks while retaining the inventory, photos, fixture classifications and chosen dates. It does not invoke AI planning. `Smart start` uses AI date assignment. There is no standalone AI moving-plan panel.
 
-`Smart start` uses AI date assignment. The editable plan appears below Leave behind, next to the map. Moving cards remain authoritative; editing the draft changes notes only. Undecided leave-behind items can receive AI resale/donation/recycling suggestions, which can be changed individually. Existing decisions are preserved. Notes are included in the final checklist and TXT export. The last navigation item is Moving checklist.
+Drag an item to Leave behind, then from its staging area into one of the three parallel Disposal bins: Resell, Donate or Recycle. Each bin can contain multiple items. Move cards between bins to change their action, or back to the staging area to clear it. The adjacent map searches OpenStreetMap for second-hand shops, charity shops or recycling points according to the selected action. Missing locations do not imply physical stores exist for online platforms; service links remain available. The existing separate item-destinations page is retained.
 
-The new plan/disposal APIs require deploying `ai_service.py` from **this** repository to the existing Render service. Local UI changes do not deploy the backend. See DEPLOY_AI.md. Until then, the existing recognition/arrangement endpoints remain available; new features show an unavailable message rather than fabricated AI output.
+Moving checklist has actual checkboxes and per-group progress. Completion is preserved when switching pages and included in TXT export. Changing an item's date group or disposal action clears its previous completion mark. State remains in page memory; refresh resets the inventory and checklist.
 
-Tests: `node --test tests/*.cjs` and `python3 -m unittest discover -s tests -p 'test_*.py'`. Full DOM integration test (mocked AI, not live inference): install jsdom outside the repository, then run `NODE_PATH=/tmp/loopmove-dom-qa/node_modules node tests/dom-flow.js`. It checks manual reset/no AI calls, Smart start, draft editing, disposal choices, final checklist and TXT, and resetting again.
+Packing guide always shows all five existing photo references: suitcase, bedding bag, small reinforced box, medium carton and bulky-item protection. Relevant types show estimated counts and assigned items; unused types remain visible as references. These are rule-based estimates, not model-generated quantities.
+
+AI disposal suggestions on the existing destinations page require deploying `ai_service.py` from this repository to Render. The existing recognition/arrangement service is unchanged by these UI changes. See DEPLOY_AI.md.
+
+Tests: `node --test tests/*.cjs`. The DOM integration test requires jsdom installed outside the repository: `NODE_PATH=/tmp/loopmove-dom-qa/node_modules node tests/dom-flow.js`. It checks language, manual reset, staged/nested drag-and-drop, multi-item bins, action-specific map queries, checkboxes, progress and export. AI/map responses in that test are mocked.

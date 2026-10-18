@@ -25,3 +25,19 @@ The public GitHub Pages site is static. It cannot run Python or safely hold the 
 - The current API key and model access have not yet been verified from a live deployment. A successful health check alone does not prove provider authentication or image inference.
 - Render's free web services can spin down after inactivity, so the first AI request may be delayed. If the deadline demo must be reliable, deploy and warm the service shortly before judging, and keep a clearly labelled static/demo fallback.
 - Do not expose every repository. The public demo needs the front-end files and this deployment guide; the model key must remain a server-side secret.
+
+## Current repository and updated planning API
+
+The old `Rcorange29/loopmove` repository has been removed. Updated backend source now lives in **Rcorange29/loopmove-demo**, root file `ai_service.py`.
+
+After this branch's changes are pushed, reconnect the **existing** Render service `loopmove-ai-api` to `Rcorange29/loopmove-demo`, branch `genai-backend-integration`. Root directory: empty. Build command: `pip install -r requirements.txt`. Start command: `python ai_service.py`. Health check: `/api/health`. Keep the existing `ARK_API_KEY` server environment setting; do not copy it into this repository or chat. Keep the same service URL so config.js remains valid.
+
+The updated health response includes `capabilities` with `dispose`, `plan`, `multilingual` and `recognize_bbox`. The previous service's health response does not prove these new features exist.
+
+New `POST /api/dispose`: request `{language, dest, items:[{id,name,kind,vol}]}`; response `{language, items:[{id,handle,reason}], provider,model,request_id}`. `handle` is sell/donate/recycle. The front end only sends undecided leave-behind items, validates IDs and actions, and ignores stale responses.
+
+Updated `POST /api/plan`: request `{language,dest,dates,items:[{id,name,kind,vol,bucket,handle,fixed}]}`; response includes `text` and the exact requested `language`. The old endpoint returns generic Chinese text and lacks this language contract; the front end rejects it rather than presenting it as a valid current plan.
+
+Manual mode cancels pending requests, clears plan/disposal state and date assignments, keeps inventory and fixed-fixture classifications, and suppresses AI controls and packing guidance. The plan editor is an editable note; item cards remain authoritative, and draft edits do not silently alter dates.
+
+No new backend deployment has been performed by this local change. After deploying, verify genuine inference for disposal and plan plus all three recognition languages and accurate image boxes. Missing model coordinates remain unboxed, with manual correction available.

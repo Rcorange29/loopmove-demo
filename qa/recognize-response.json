@@ -1,0 +1,49 @@
+{
+  "items": [
+    {
+      "name": "单人床",
+      "size": "200×120×90",
+      "vol": 0.6,
+      "kind": "大件家具",
+      "channel": "留用"
+    },
+    {
+      "name": "笔记本电脑",
+      "size": "35×25×2",
+      "vol": 0.002,
+      "kind": "电子",
+      "channel": "Carousell"
+    },
+    {
+      "name": "落地绿植",
+      "size": "60×60×80",
+      "vol": 0.029,
+      "kind": "装饰",
+      "channel": "留用"
+    },
+    {
+      "name": "书桌",
+      "size": "120×60×75",
+      "vol": 0.27,
+      "kind": "大件家具",
+      "channel": "Carousell"
+    },
+    {
+      "name": "办公转椅",
+      "size": "60×60×90",
+      "vol": 0.032,
+      "kind": "大件家具",
+      "channel": "Carousell"
+    },
+    {
+      "name": "粉色拉杆箱",
+      "size": "50×30×70",
+      "vol": 0.105,
+      "kind": "零碎",
+      "channel": "Carousell"
+    }
+  ],
+  "provider": "volcengine_ark",
+  "model": "doubao-seed-2-1-lite-260915",
+  "request_id": "c7cee6400b6b"
+}

@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: loopmove-ai-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python ai_service.py
+    healthCheckPath: /api/health
+    envVars:
+      - key: ARK_API_KEY
+        sync: false
+      - key: ARK_MODEL
+        value: doubao-seed-2-1-lite-260915

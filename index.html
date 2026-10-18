@@ -1849,9 +1849,9 @@ document.getElementById('genPlan').onclick=async e=>{ const box=document.getElem
   let res=null,j=null;
   for(let attempt=1;attempt<=2;attempt++){
    try{
-    res=await fetch(API_BASE+'/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-     lang:LANG,dest:S.dest||'', items:S.items.filter(i=>i.bucket!=='trash').map(i=>({name:nm(i),vol:i.vol,kind:i.kind,ch:i.ch}))
-    }),signal:AbortSignal.timeout(45000)});
+            res=await fetch(API_BASE+'/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+             lang:LANG,dest:S.dest||'', items:S.items.filter(i=>i.bucket!=='trash'&&!i.fixed).map(i=>({name:nm(i),vol:i.vol,kind:i.kind,ch:i.ch}))
+            }),signal:AbortSignal.timeout(45000)});
    }catch(netErr){
     if(attempt===1){await new Promise(r=>setTimeout(r,1200));continue;}
     throw netErr;
@@ -2046,6 +2046,6 @@ try{
  if(!IS_STATIC)setTimeout(()=>{fetch(API_BASE+'/api/health',{cache:'no-store'}).catch(()=>{});},1500);
 }catch(e){}
 </script>
-<script src="journey.js?v=20261018-final6"></script>
+<script src="journey.js?v=20261018-final7"></script>
 </body>
 </html>

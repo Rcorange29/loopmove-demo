@@ -47,7 +47,7 @@ function handleLabel(h){
   :h==='donate'?jl('🎁 捐赠 Donate','🎁 Donate','🎁 捐贈 Donate')
   :h==='recycle'?jl('♻️ 回收 Recycle','♻️ Recycle','♻️ 回收 Recycle'):slotName('pending');
 }
-function timelineSlots(){return journey.dates.map((_,i)=>'day'+(i+1));}
+function timelineSlots(){return Array.from({length:S.trips},(_,i)=>'day'+(i+1));}
 
 /* 统一状态变更：任何拖拽/选择都走这里，保证旧处理方式被清除 */
 function moveItem(it,slot,handle){
@@ -196,14 +196,18 @@ function renderBoard(){
 function packingFor(items){
  const v={suitcase:0,soft:0,small:0,medium:0};
  const large=[];
+ const assigned={suitcase:[],soft:[],small:[],medium:[],large:[]};
  items.forEach(it=>{
   if(it.fixed||it.bucket==='buy'||it.bucket==='trash')return;
   const n=it.name||'';
+  const before={...v},largeBefore=large.length;
   if(/床|沙发|沙發|床垫|床墊|柜|櫃|桌|椅|sofa|mattress|wardrobe|table|bed|chair/i.test(n))large.push(it);
   else if(/书|書|kitchen|厨具|廚具|杂物|雜物|厨具|廚具|books|misc/i.test(n))v.medium+=it.vol;
   else if(/电子|电脑|電腦|装饰|裝飾|化妆品|化妝品|衣|clothes|decor|electronic|laptop|computer/i.test(n))v.small+=it.vol;
   else if(/被|枕|褥|垫|墊|毯|pillow|blanket|linen|bedding|quilt/i.test(n))v.soft+=it.vol;
   else v.suitcase+=it.vol;
+  const group=large.length>largeBefore?'large':Object.keys(v).find(k=>v[k]!==before[k])||'suitcase';
+  assigned[group].push(it);
  });
  const c={
   suitcase:v.suitcase?Math.max(1,Math.ceil(v.suitcase/0.112)):0,
@@ -212,7 +216,9 @@ function packingFor(items){
   medium:v.medium?Math.max(1,Math.ceil(v.medium/0.08)):0,
   large:large.length
  };
- const namesFor=re=>items.filter(it=>re.test(it.name||'')).map(it=>nm(it)).slice(0,4).join('、');
+ let groupIndex=0;
+ const groups=['suitcase','soft','small','medium','large'].filter(k=>c[k]);
+ const namesFor=()=>assigned[groups[groupIndex++]].map(it=>nm(it)).slice(0,4).join('、');
  const out=[];
  if(c.suitcase)out.push({cls:'pk1',label:jl('28寸行李箱','28" suitcase','28寸行李箱'),n:c.suitcase,names:namesFor(/电子|电脑|電腦|衣|书|書|日常|clothes|laptop|electronic|computer|book|personal|行李|綠植|绿植|蘿|萝/i)});
  if(c.soft)out.push({cls:'pk2',label:jl('软装袋','Soft bedding bag','軟裝袋'),n:c.soft,names:namesFor(/被|枕|褥|垫|墊|毯|pillow|blanket|linen|bedding|quilt/i)});

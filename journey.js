@@ -654,13 +654,22 @@ async function smartArrange(){
    items:S.items.map(it=>({id:it.id,name:nm(it),kind:it.kind,size:it.size,vol:it.vol,fixed:!!it.fixed}))
   };
   tEl.textContent=jl('AI 正在分类（带走/当地购买/转卖/捐赠/回收）并安排日期…','AI is classifying (move/buy/resell/donate/recycle) and scheduling…','AI 正在分類（帶走/當地購買/轉賣/捐贈/回收）並安排日期…');
-  const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),90000);
-  let res;
-  try{
-   res=await fetch(API_BASE+'/api/arrange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:ctrl.signal});
-  }finally{clearTimeout(to);}
-  const j=await res.json().catch(()=>null);
-  if(!res.ok)throw new Error((j&&(j.message||j.error))||'arrange failed');
+  /* 冷启动刚结束时后端偶发 502/网络抖动：自动重试一次，避免第一次点就失败 */
+  let res=null,j=null;
+  for(let attempt=1;attempt<=2;attempt++){
+   const ctrl=new AbortController();const to=setTimeout(()=>ctrl.abort(),90000);
+   try{
+    res=await fetch(API_BASE+'/api/arrange',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload),signal:ctrl.signal});
+   }catch(netErr){
+    if(attempt===1){await new Promise(r=>setTimeout(r,1500));continue;}
+    throw netErr;
+   }finally{clearTimeout(to);}
+   j=await res.json().catch(()=>null);
+   if(res.ok)break;
+   if(attempt===1&&res.status>=500){await new Promise(r=>setTimeout(r,1500));continue;}
+   throw new Error((j&&(j.message||j.error))||'arrange failed');
+  }
+  if(!res||!res.ok)throw new Error('arrange failed');
   if(!j||!Array.isArray(j.items))throw new Error('bad payload');
   /* 前端防御校验：不通过则整体拒绝应用，保留当前选择 */
   const byId={};

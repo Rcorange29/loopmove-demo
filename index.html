@@ -1845,13 +1845,21 @@ document.getElementById('genPlan').onclick=async e=>{ const box=document.getElem
  box.innerHTML='<span class="ai-loading">'+T('genLoading')+'</span>';
  if(IS_STATIC){ typeText(box,T('planStatic')); return; }
  try{
-  const res=await fetch(API_BASE+'/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
-   lang:LANG,dest:S.dest||'', items:S.items.filter(i=>i.bucket!=='trash').map(i=>({name:nm(i),vol:i.vol,kind:i.kind,ch:i.ch}))
-  }),signal:AbortSignal.timeout(45000)});
-  const j=await res.json().catch(()=>null);
-  if(!res.ok){
-   /* 403 ORIGIN_NOT_ALLOWED = 当前页面来源不在后端白名单 */
+  /* 冷启动抖动重试一次 */
+  let res=null,j=null;
+  for(let attempt=1;attempt<=2;attempt++){
+   try{
+    res=await fetch(API_BASE+'/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+     lang:LANG,dest:S.dest||'', items:S.items.filter(i=>i.bucket!=='trash').map(i=>({name:nm(i),vol:i.vol,kind:i.kind,ch:i.ch}))
+    }),signal:AbortSignal.timeout(45000)});
+   }catch(netErr){
+    if(attempt===1){await new Promise(r=>setTimeout(r,1200));continue;}
+    throw netErr;
+   }
+   j=await res.json().catch(()=>null);
+   if(res.ok)break;
    if(res.status===403){typeText(box,aiBlockedMsg(true));return;}
+   if(attempt===1&&res.status>=500){await new Promise(r=>setTimeout(r,1200));continue;}
    throw new Error((j&&(j.message||j.error))||'AI plan failed');
   }
   const txt=(j&&j.text)||'';
@@ -2032,7 +2040,12 @@ try{applyLang();}catch(e){console.error('applyLang',e);}
 try{buildDest();}catch(e){console.error('buildDest',e);}
 try{buildGoals();}catch(e){console.error('buildGoals',e);}
 try{document.querySelector('#accSwitch button[data-acc=""]').classList.add('on');}catch(e){}
+/* 预热：页面打开后静默 ping 一次，让 Render 免费实例提前醒来，
+   用户走到第 3/4 步时就不用再等冷启动（失败也无所谓，不提示） */
+try{
+ if(!IS_STATIC)setTimeout(()=>{fetch(API_BASE+'/api/health',{cache:'no-store'}).catch(()=>{});},1500);
+}catch(e){}
 </script>
-<script src="journey.js?v=20261018-final4"></script>
+<script src="journey.js?v=20261018-final5"></script>
 </body>
 </html>

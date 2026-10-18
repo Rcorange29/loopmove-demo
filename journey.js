@@ -22,7 +22,9 @@ const DISPOSAL_QUERIES={
 function normalizeItems(){
  S.items.forEach(i=>{
   if(!i.id)i.id=uid();
-  if(FIXTURE.test(i.name))i.fixed=true;
+  /* 固定设施靠 _key（示例数据的原始中文名）判断：界面切到英文时 name 已变成英文，
+     只匹配 name 会漏掉「墙上搁板」这类没有英文关键词的设施 */
+  if(FIXTURE.test(i.name)||(i._key&&FIXTURE.test(i._key)))i.fixed=true;
   if(i.fixed){i.bucket='fixed';i.plan='';i.handle='';}
   else if(i.plan==='rebuy'&&i.bucket==='day1')i.bucket='buy';
   if(i.bucket==='trash'&&!DISPOSAL_HANDLES.includes(i.handle))i.handle='';

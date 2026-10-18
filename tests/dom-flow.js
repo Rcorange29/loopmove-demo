@@ -15,6 +15,12 @@ inject(fs.readFileSync(path.join(root,'journey.js'),'utf8'));
 (async()=>{
  assert.deepEqual(errors,[],'initial page script errors');
  assert.equal(w.document.querySelector('.steps button:last-child').textContent,'Moving checklist');
+ w.eval("go(2);S.items=[];['嵌入式床头柜','黑框装饰画','布艺双人床','吊扇灯','双层落地窗帘','小型装饰盆栽'].forEach(name=>{const i=LoopMoveRecognition.item({name},'en');addItem(i.name,null,i);});renderRecognized('assets/images/example-room.png',S.items);");
+ for(const el of w.document.querySelectorAll('#itemList .item-name,.unlocated-items button'))assert.ok(!/[\u3400-\u9fff]/.test(el.textContent),'English inventory and photo labels');
+ assert.ok(w.document.getElementById('itemList').textContent.includes('Ceiling fan light'));
+ w.eval("LANG='zhHans';applyLang();rerenderAll();");assert.ok(w.document.getElementById('itemList').textContent.includes('吊扇灯'));
+ w.eval("LANG='en';applyLang();rerenderAll();");assert.ok(w.document.getElementById('itemList').textContent.includes('Ceiling fan light'));
+
  w.eval("S.items=[{id:'desk',name:'Desk',kind:'大件家具',vol:.3,bucket:'day2',handle:'sell',plan:'rebuy',classified:true},{id:'fan',name:'Ceiling fan',fixed:true,bucket:'fixed'}];chooseArrangement();");
  w.document.getElementById('arrangeManual').click();
  assert.equal(w.eval("S.items[0].bucket"),'pending');assert.equal(w.eval("S.items[0].handle"),'');assert.equal(w.eval("S.items[1].bucket"),'fixed');assert.equal(w.document.getElementById('aiJourneyPlan').hidden,true);assert.equal(w.document.getElementById('packingGuide').hidden,true);assert.equal(calls.filter(c=>c.url.includes('/api/')).length,0);

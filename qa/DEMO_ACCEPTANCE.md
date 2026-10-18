@@ -53,3 +53,9 @@ PR：https://github.com/Rcorange29/loopmove-demo/pull/2
 已删除缺少 bbox 时均匀铺框的逻辑；仅绘制有效坐标，并支持用户手动画框修正。请求携带界面语言和坐标格式，多语言名称、固定设施判断、编辑同步已接入。处置卡片加宽，按钮按内容宽度排列并在不足时换行。19 项逻辑测试通过，HTML 内联脚本与 JS 语法通过。
 
 未完成：当前 Render 响应没有 bbox 和多语言 names；传参不代表后端已支持。精准模型定位和语言生成需后端更新，不能宣称已上线。私有仓库 fetch 返回 Repository not found。部署要求见 RECOGNITION_BACKEND_HANDOFF.md。视觉浏览器验收仍未完成。
+
+## English recognition labels — compatibility fix
+
+The legacy live API still returns Chinese-only names. Passing the UI language did not localize those names, so English UI leaked Chinese results. Added household-name localization as a compatibility layer, while preferring correctly localized model output. Source names remain in data for fixture checks. Unknown translations show an English name-review label instead of raw Chinese or invented specific identities. User-edited names are preserved.
+
+The six reported items now render as Built-in bedside cabinet, Black-framed wall art, Upholstered double bed, Ceiling fan light, Double-layer floor-length curtains, and Small decorative potted plant. 27 logic tests pass; DOM integration checks inventory/photo labels and switching back and forth between English and Simplified Chinese. This does not deploy the pending richer model/bbox backend.

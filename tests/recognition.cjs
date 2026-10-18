@@ -24,3 +24,19 @@ test('installed fixtures are retained, movable furniture stays movable',()=>{
 test('missing boxes stay missing and malformed items are ignored',()=>{
  assert.equal(r.item({name:'Desk'},'en').bbox,null);assert.equal(r.item(null,'en'),null);assert.equal(r.item({name:''},'en'),null);
 });
+test('legacy Chinese-only API results display in English, including reported examples',()=>{
+ const examples={'嵌入式床头柜':'Built-in bedside cabinet','黑框装饰画':'Black-framed wall art','布艺双人床':'Upholstered double bed','吊扇灯':'Ceiling fan light','双层落地窗帘':'Double-layer floor-length curtains','小型装饰盆栽':'Small decorative potted plant'};
+ for(const [name,english] of Object.entries(examples)){
+  const it=r.item({name},'en');assert.equal(it.name,english);assert.equal(r.displayName(it,'en'),english);assert.equal(r.displayName(it,'zhHans'),name);assert.ok(!/[\u3400-\u9fff]/.test(r.displayName(it,'en')));
+ }
+});
+test('wrong-language names from backend never override English UI with Chinese',()=>{
+ const it=r.item({name:'书桌',names:{en:'书桌'}},'en');assert.equal(it.name,'Desk');
+ assert.equal(r.displayName({name:'吊扇灯',names:{}},'en'),'Ceiling fan light');
+});
+test('unknown translations ask for review rather than inventing names or leaking Chinese',()=>{
+ const it=r.item({name:'未识别专业仪器'},'en');assert.equal(it.name,'Item — name needs review');assert.equal(it.nameNeedsReview,true);assert.equal(it.sourceName,'未识别专业仪器');
+});
+test('fixed fixtures remain fixed after display translation',()=>{
+ const it=r.item({name:'嵌入式床头柜'},'en');assert.equal(it.fixed,true);assert.equal(it.name,'Built-in bedside cabinet');
+});

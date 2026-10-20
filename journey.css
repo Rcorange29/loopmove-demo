@@ -227,6 +227,9 @@ body.lowvision .loc-btn { background:#141414!important; color:#ff0!important; bo
 .comparison-options { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:10px 0; }
 .comparison-options button { padding:10px; font-size:12px; }
 #s3>.lead,#s4>.lead { max-width:80ch; }
+/* s3 底部操作按钮：三等分、等高、顶底边对齐（消除 ghost/primary 内边距差导致的错位） */
+#s3>.row.no-print{display:flex;gap:12px;align-items:stretch;}
+#s3>.row.no-print button{flex:1 1 0;min-height:52px;display:flex;align-items:center;justify-content:center;white-space:nowrap;}
 #s5 .plan-day p { overflow-wrap:anywhere; }
 @media print {
  #s3 { display:none!important; }

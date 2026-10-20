@@ -638,11 +638,34 @@ function rebalanceDays(){
  }
 }
 
-/* 让 Leave-behind 的 Resell/Donate/Recycle 三桶尽量都分到：AI 常把物品全堆到 Donate。
-   只补缺桶、优先保留 AI 判断：m>=3 尽量覆盖三桶，m==2 覆盖两桶，单件不动。
+/* 让 Leave-behind 的 Resell/Donate/Recycle 三桶尽量都分到。
+   ① 零不搬走项时，只把清单里强信号适合留下的候选补位（证件/随身电子/必需品绝不碰）；
+   ② 已有 trash 时只补缺桶、保留 AI 判断：m>=3 覆盖三桶，m==2 覆盖两桶，单件不动。
    仅自动安排后调用一次，不覆盖用户后续手动拖拽。 */
+function leaveSignal(it){
+ const t=((it.name||'')+' '+(it.kind||'')+' '+(it.size||'')).toLowerCase();
+ /* 证件、随身电子、现金、仍在用的物品绝不补位 */
+ if(/passport|document|id\b|證件|证件|护照|護照|phone|手機|手机|charger|充電|钱包|wallet|cash|money|keys|鑰匙|钥匙|still read|still use|仍然|還要|还要/.test(t))return null;
+ /* 破损/容器/纸/玻璃金属/灯泡 → recycle（强信号） */
+ if(/broken|壞|坏|damaged|cracked|塑料|plastic|paper|紙|cardboard|bottle|tin\b|can\b|bulb|lamp|燈|灯|scrap|廢|废|glass|玻璃|metal|金屬|金属/.test(t))return 'recycle';
+ /* 较新/品牌/可二手 → sell */
+ if(/brand|designer|barely used|like new|collect|camera|guitar|包|bag|watch|錶|表/.test(t))return 'sell';
+ /* 旧/闲置的衣物/书/床品 → donate（须同时有闲置语境，不补必需品） */
+ if(/(worn|old|spare|extra|unused|no longer|unwanted|闲置|多余|淘汰)/.test(t)&&/(cloth|shirt|tee|jacket|coat|sweater|衣|衫|book|書|bedding|pillow|quilt|床|枕|被|towel|毛巾)/.test(t))return 'donate';
+ return null;
+}
 function balanceHandles(){
- const trash=S.items.filter(i=>i.bucket==='trash');
+ /* 零不搬走项：从清单里挑强信号候选补位，每类最多一件，不碰必需品 */
+ let trash=S.items.filter(i=>i.bucket==='trash');
+ if(!trash.length){
+  const picked={};
+  S.items.forEach(it=>{
+   if(it.fixed||it.bucket==='trash')return;
+   const sig=leaveSignal(it);
+   if(sig&&!picked[sig]){it.bucket='trash';it.plan='';it.handle=sig;picked[sig]=it;}
+  });
+ }
+ trash=S.items.filter(i=>i.bucket==='trash');
  const m=trash.length;
  if(m<2)return;
  const H=['sell','donate','recycle'];

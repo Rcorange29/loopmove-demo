@@ -637,6 +637,47 @@ function rebalanceDays(){
   });
  }
 }
+
+/* 让 Leave-behind 的 Resell/Donate/Recycle 三桶尽量都分到：AI 常把物品全堆到 Donate。
+   只补缺桶、优先保留 AI 判断：m>=3 尽量覆盖三桶，m==2 覆盖两桶，单件不动。
+   仅自动安排后调用一次，不覆盖用户后续手动拖拽。 */
+function balanceHandles(){
+ const trash=S.items.filter(i=>i.bucket==='trash');
+ const m=trash.length;
+ if(m<2)return;
+ const H=['sell','donate','recycle'];
+ const count=h=>trash.filter(i=>i.handle===h).length;
+ const target=m>=3?3:2;
+ const occupied=()=>H.filter(h=>count(h)>0);
+ if(occupied().length>=target)return;
+ /* 属性倾向：电子/旧/破损/容器 → recycle；较新/可二手 → sell；其余完好可用 → donate */
+ const pref=it=>{
+  const t=((it.name||'')+' '+(it.kind||'')+' '+(it.size||'')).toLowerCase();
+  if(/electron|電子|电子|battery|電池|电池|cable|wire|plug|燈|灯|bulb|lamp|broken|壞|坏|worn|old|塑料|plastic|metal|金屬|金属|glass|玻璃|paper|紙|纸|cardboard|bottle|scrap|tin\b|can\b/.test(t))return 'recycle';
+  if(/brand|brandnew|new|designer|gadget|collect|bag|包|shoe|鞋|watch|錶|表|camera|guitar|bike|自行車|自行车/.test(t))return 'sell';
+  return 'donate';
+ };
+ let missing=H.filter(h=>count(h)===0);
+ while(occupied().length<target&&missing.length){
+  const h=missing.shift();
+  /* 候选：当前不在 h、倾向首选正是 h、且本轮未被锁定的项 */
+  let pick=trash.find(x=>x.handle!==h&&pref(x)===h&&!x._locked);
+  if(!pick){
+   /* 从人数最多且取走后仍≥1的桶取一件，避免清空已有桶 */
+   const busiest=H.filter(b=>b!==h&&count(b)>1).sort((a,b)=>count(b)-count(a))[0];
+   if(busiest)pick=trash.find(x=>x.handle===busiest&&!x._locked);
+  }
+  if(pick){pick.handle=h;pick._locked=true;}
+ }
+ trash.forEach(x=>delete x._locked);
+ /* 同步 AI 说明里的 handle，避免文案与实际不符 */
+ if(Array.isArray(journey.lastArrange)){
+  trash.forEach(it=>{
+   const r=journey.lastArrange.find(x=>x.id===it.id);
+   if(r)r.handle=it.handle;
+  });
+ }
+}
 function ruleFallback(){
  normalizeItems();
  const N=S.trips;
@@ -746,6 +787,7 @@ async function smartArrange(){
   journey.arrangement='ai';journey.edited=false;
   journey.lastArrange=j.items.slice();   /* 记住结果，切换语言时可按新语言重排这段说明 */
   rebalanceDays();   /* 保证每一天都有物品、不出现空天，天数随物品数收缩到 2~4 */
+  balanceHandles();  /* Resell/Donate/Recycle 尽量都分到，避免全堆到一个桶 */
   renderBoard();
   const head=arrangeHeadText();
   tEl.textContent=head+'\n'+arrangeReasonText();

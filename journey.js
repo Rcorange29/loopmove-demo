@@ -611,6 +611,32 @@ renderGMap=function(){
 };
 
 /* ================= AI 一次性分类 + 分天 ================= */
+/* 连续非空重平衡：AI/规则分天后保证选定的每一天都有物品，不出现空天；
+   天数按移动物品数在 2~4 间收缩（尊重用户选的 S.trips，封顶 4），避免东西少却留空天。
+   只在自动安排（AI / 本地规则）后调用一次，不覆盖用户后续手动拖拽。 */
+function rebalanceDays(){
+ const moving=S.items.filter(i=>!i.fixed&&i.bucket!=='buy'&&i.bucket!=='trash'&&/^day\d+$/.test(i.bucket));
+ const m=moving.length;
+ if(!m)return;
+ /* 保留 AI/规则给出的先后：原 day 升序，同天按体积降序（大件先搬） */
+ moving.sort((a,b)=>{
+  const da=+a.bucket.replace('day',''),db=+b.bucket.replace('day','');
+  return da-db||b.vol-a.vol;
+ });
+ let K;
+ if(m===1)K=1;
+ else K=Math.max(2,Math.min(S.trips,m,4));
+ S.trips=K;
+ const per=Math.ceil(m/K);
+ moving.forEach((it,i)=>{it.bucket='day'+(Math.floor(i/per)+1);});
+ /* 同步 AI 说明里的 day，避免文案与实际安排不符 */
+ if(Array.isArray(journey.lastArrange)){
+  moving.forEach(it=>{
+   const r=journey.lastArrange.find(x=>x.id===it.id);
+   if(r)r.day=+it.bucket.replace('day','');
+  });
+ }
+}
 function ruleFallback(){
  normalizeItems();
  const N=S.trips;
@@ -619,7 +645,7 @@ function ruleFallback(){
  const keep=moving.filter(i=>!aiSuggest.includes(i));
  const sorted=keep.slice().sort((a,b)=>urgency(a)-urgency(b)||b.vol-a.vol);
  distribute(sorted,N,S.purpose||'phased');
- S.trips=N;
+ rebalanceDays();
  renderBoard();
 }
 /* AI 分类结果的文案：按当前语言实时生成，切换语言时可用同一份数据重排，避免残留旧语言 */
@@ -719,6 +745,7 @@ async function smartArrange(){
   S.trips=N;
   journey.arrangement='ai';journey.edited=false;
   journey.lastArrange=j.items.slice();   /* 记住结果，切换语言时可按新语言重排这段说明 */
+  rebalanceDays();   /* 保证每一天都有物品、不出现空天，天数随物品数收缩到 2~4 */
   renderBoard();
   const head=arrangeHeadText();
   tEl.textContent=head+'\n'+arrangeReasonText();
